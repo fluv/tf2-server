@@ -90,7 +90,7 @@ spec:
                key: rcon
                optional: false
         - name: SRCDS_MAXPLAYERS
-          value: "14"
+          value: "24"
         - name: SRCDS_STARTMAP
           value: pd_selbyen
         - name: SRCDS_WORKSHOP_AUTHKEY
