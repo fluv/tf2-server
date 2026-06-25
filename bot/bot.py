@@ -95,10 +95,13 @@ def invoke_claude(snapshot, asker, request):
         f"{SYSTEM}\n\n=== MATCH STATE ===\n{snapshot}\n\n"
         f'=== REQUEST ===\n{asker} said: "{TRIGGER} {request}"\n'
     )
-    # Flags verified against cc-source 2.1.119: `dontAsk` denies anything not in
-    # --allowedTools with no prompts (tighter than bypassPermissions, and works
-    # as non-root). The Bash(rcon:*) prefix syntax is the one bit to confirm on
-    # first deploy — if rcon gets denied, try `Bash(rcon *)`.
+    # Flags verified against cc-source 2.1.119 and confirmed live: `dontAsk`
+    # denies anything not in --allowedTools with no prompts (tighter than
+    # bypassPermissions, and works as non-root). Bash(rcon:*) prefix-matches the
+    # rcon tool. The rcon client logs its own commands to the pod stdout.
+    print(f"[trigger] {asker}: {request!r}", flush=True)
+    print(f"[context]\n{snapshot}", flush=True)
+    t0 = time.monotonic()
     try:
         r = subprocess.run(
             ["claude", "-p", prompt,
@@ -106,11 +109,12 @@ def invoke_claude(snapshot, asker, request):
              "--permission-mode", "dontAsk"],
             capture_output=True, text=True, timeout=CLAUDE_TIMEOUT,
         )
-        print(f"[claude] {asker}: {request!r}\n{r.stdout.strip()}", flush=True)
+        dur = time.monotonic() - t0
+        print(f"[claude rc={r.returncode} {dur:.1f}s] {r.stdout.strip()}", flush=True)
         if r.returncode != 0:
-            print(f"[claude rc={r.returncode}] {r.stderr.strip()}", flush=True)
+            print(f"[claude stderr] {r.stderr.strip()}", flush=True)
     except subprocess.TimeoutExpired:
-        print(f"[claude timeout on: {request!r}]", flush=True)
+        print(f"[claude timeout {CLAUDE_TIMEOUT}s on: {request!r}]", flush=True)
 
 
 def main():

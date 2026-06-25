@@ -37,6 +37,19 @@ def read_packet(sock):
     return req_id, typ, data[8:-2].decode("utf-8", "replace")
 
 
+def log_event(msg):
+    """Write to PID 1's stdout so the line lands in `kubectl logs`. This runs
+    inside claude-code's Bash sandbox, whose stdout claude captures rather than
+    the pod -- so rcon activity is invisible in the pod log unless we route it
+    to PID 1's fd directly. Falls back to stderr if that's not available."""
+    line = f"[rcon] {msg}\n"
+    try:
+        with open("/proc/1/fd/1", "a") as fd:
+            fd.write(line)
+    except OSError:
+        sys.stderr.write(line)
+
+
 def main():
     addr = os.environ.get("RCON_ADDR", "tf2-rcon:27015")
     password = os.environ.get("RCON_PASS")
@@ -55,6 +68,7 @@ def main():
             req_id, typ, _ = read_packet(sock)
             if typ == SERVERDATA_AUTH_RESPONSE:
                 if req_id == -1:
+                    log_event(f"AUTH FAILED -- {command}")
                     sys.exit("rcon auth failed")
                 break
         sock.sendall(pack(2, SERVERDATA_EXECCOMMAND, command))
@@ -71,8 +85,10 @@ def main():
                     parts.append(body)
         except (socket.timeout, ConnectionError):
             pass
-        if parts:
-            print("".join(parts).strip())
+        response = "".join(parts).strip()
+        log_event(f"{command}  ->  {response or '(sent, no response)'}")
+        if response:
+            print(response)
 
 
 if __name__ == "__main__":
