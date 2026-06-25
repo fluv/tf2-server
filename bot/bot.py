@@ -33,11 +33,17 @@ MAX_TOKENS = 512
 MAX_TOOL_HOPS = 5  # safety cap on the tool loop per trigger
 
 logging.basicConfig(
-    level=os.environ.get("LOG_LEVEL", "INFO").upper(),
+    level=logging.INFO,
     format="%(asctime)s %(levelname)-5s %(message)s",
     stream=sys.stdout,
 )
 log = logging.getLogger("tf2-bot")
+log.setLevel(os.environ.get("LOG_LEVEL", "INFO").upper())
+# The anthropic SDK pulls in httpx/httpcore, which emit per-request DEBUG (every
+# TLS handshake and response chunk). Keep them at WARNING so LOG_LEVEL=DEBUG
+# surfaces the bot's own detail, not the HTTP machinery.
+for _noisy in ("httpx", "httpcore", "anthropic"):
+    logging.getLogger(_noisy).setLevel(logging.WARNING)
 
 # The system prompt is two independently-configurable parts. MECHANICAL is the
 # operational contract (how the bot works) and should rarely change. CHARACTER
@@ -57,7 +63,12 @@ to hear must be a say call.
 So: reason in plain text, then speak via rcon say "<one line, <=120 chars>". \
 Never put a spoken line in plain text -- it will not be heard. Use other rcon \
 commands when a player clearly asks (changelevel, tf_bot_add, nextlevel, \
-mp_restartgame)."""
+mp_restartgame); use full map names like cp_dustbowl or koth_harvest_final.
+
+CRITICAL: you cannot observe whether a command worked -- rcon gives you no \
+useful feedback, and the result will not appear in the conversation. Issue each \
+command exactly ONCE, then stop. Never retry or re-issue a command, and never \
+assume it failed -- assume it took and move on. Retrying jams the whole bot."""
 
 DEFAULT_CHARACTER = """Your personality: witty, terse, a bit of a heckler. Lean \
 on what you have actually seen -- who is fragging, the scoreline, the map, what \
