@@ -83,6 +83,12 @@ spec:
                name: srcds
                key: token
                optional: true
+        - name: SRCDS_RCONPW
+          valueFrom:
+             secretKeyRef:
+               name: srcds
+               key: rcon
+               optional: false
         - name: SRCDS_MAXPLAYERS
           value: "14"
         - name: SRCDS_STARTMAP
