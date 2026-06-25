@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""Minimal Source RCON client — the bot's hands.
-
-Reads RCON_PASS and RCON_ADDR (host:port) from the environment, sends the
-command passed as argv, prints any response. Claude Code calls this as a Bash
-tool, e.g.  rcon say "you're getting farmed"  /  rcon tf_bot_add 4
+"""Minimal Source RCON client. `run_rcon(command)` connects, authenticates,
+sends one command and returns the server's response. The supervisor calls it
+directly in its tool loop (and logs each command), so this no longer needs to
+route its own output anywhere. Also runnable as a CLI: `python rcon.py say hi`.
 """
 import os
 import socket
@@ -37,14 +36,14 @@ def read_packet(sock):
     return req_id, typ, data[8:-2].decode("utf-8", "replace")
 
 
-def main():
+def run_rcon(command):
+    """Execute one rcon command, returning the server's response text (which is
+    often empty for fire-and-forget commands like `say`). Raises on auth or
+    connection failure."""
     addr = os.environ.get("RCON_ADDR", "tf2-rcon:27015")
     password = os.environ.get("RCON_PASS")
     if not password:
-        sys.exit("RCON_PASS not set")
-    if len(sys.argv) < 2:
-        sys.exit("usage: rcon <command...>")
-    command = " ".join(sys.argv[1:])
+        raise RuntimeError("RCON_PASS not set")
     host, _, port = addr.partition(":")
 
     with socket.create_connection((host, int(port or 27015)), timeout=10) as sock:
@@ -55,13 +54,11 @@ def main():
             req_id, typ, _ = read_packet(sock)
             if typ == SERVERDATA_AUTH_RESPONSE:
                 if req_id == -1:
-                    sys.exit("rcon auth failed")
+                    raise RuntimeError("rcon auth failed")
                 break
         sock.sendall(pack(2, SERVERDATA_EXECCOMMAND, command))
-        # srcds can answer EXECCOMMAND with several packets (an empty
-        # RESPONSE_VALUE then the body), or with nothing meaningful for
-        # fire-and-forget commands like `say`. Read whatever arrives in a short
-        # window rather than blocking on exactly one packet.
+        # srcds can answer with several packets (an empty RESPONSE_VALUE then the
+        # body) or nothing meaningful. Read whatever arrives in a short window.
         sock.settimeout(1.0)
         parts = []
         try:
@@ -71,9 +68,10 @@ def main():
                     parts.append(body)
         except (socket.timeout, ConnectionError):
             pass
-        if parts:
-            print("".join(parts).strip())
+        return "".join(parts).strip()
 
 
 if __name__ == "__main__":
-    main()
+    if len(sys.argv) < 2:
+        sys.exit("usage: python rcon.py <command...>")
+    print(run_rcon(" ".join(sys.argv[1:])))

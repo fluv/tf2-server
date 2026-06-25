@@ -1,38 +1,61 @@
 #!/usr/bin/env python3
-"""tf2-bot supervisor — trigger-invoked, full-context.
+"""tf2-bot supervisor — persistent context.
 
-Between triggers this does nothing but accumulate a world-model off the parsed
-log stream. When a player types `!bot ...`, it snapshots the current match
-state, staples it to the request, and hands the lot to a headless Claude Code
-(DeepSeek-backed) which responds by issuing rcon commands itself.
+Runs continuously, polling the server log out of Loki. Every useful event
+(chat, kills, connects, round state) is appended to a running transcript with
+NO model call -- the bot is "in the room", absorbing silently. Only when a
+player types `!bot ...` does it call the model, with the full conversation
+history (every prior turn) plus the transcript since the last turn plus the
+request, and rcon exposed as a tool. The model replies in-game by calling rcon.
 
-Claude only thinks when summoned. The parser is its eyes; rcon is its hands.
+The conversation lives in this process, so context accumulates across triggers
+like a chat session. The model API is stateless; "memory" is just the growing
+message list we resend on each call. rcon runs here in the tool loop, so every
+command the model issues is logged to the pod stdout for free.
 """
-import collections
 import os
-import subprocess
 import time
 
+import anthropic
+
 from tail import LOG_PREFIX, TRIGGER, is_noise, parse, loki_query
+from rcon import run_rcon
 
-POLL_SECONDS = 2
-RECENT_KILLS = 8
-CLAUDE_TIMEOUT = 60
+POLL_SECONDS = 1
+MODEL = os.environ.get("ANTHROPIC_MODEL", "deepseek-v4-flash")
+MAX_TOKENS = 512
+MAX_TOOL_HOPS = 5  # safety cap on the tool loop per trigger
 
-DEFAULT_SYSTEM = f"""You are the live bot on Douglas's Team Fortress 2 server, \
-summoned when a player types {TRIGGER} in chat. The current match state is below. \
-Respond IN CHARACTER and IN GAME by running rcon -- almost always:
-    rcon say "<your reply, one line, <=120 chars>"
-You may run other rcon commands when the player clearly asks (changelevel, \
-tf_bot_add, nextlevel, etc). Be witty and terse, and use the ACTUAL match data \
-to make it land. Don't explain yourself outside the game. Fire the rcon \
-command(s) and stop."""
+DEFAULT_SYSTEM = f"""You are the live bot on a Team Fortress 2 server, summoned \
+when a player types {TRIGGER} in chat. You have been silently watching the \
+server: chat, kills and round events appear in the running conversation, so you \
+already know what has been said and who is doing well. Respond IN CHARACTER and \
+IN GAME using the rcon tool -- almost always rcon say "<one line, <=120 chars>". \
+Use other rcon commands when a player clearly asks (changelevel, tf_bot_add, \
+nextlevel, mp_restartgame). Be witty, terse, a bit of a heckler, and lean on \
+what you have actually seen. Don't narrate yourself; just act."""
+
+RCON_TOOL = {
+    "name": "rcon",
+    "description": (
+        "Run a Source RCON command on the TF2 server. Talk in chat with "
+        'say "your message" (keep it under 120 chars). Other commands work too: '
+        "changelevel <map>, tf_bot_add <n>, nextlevel <map>, mp_restartgame 1."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "command": {
+                "type": "string",
+                "description": 'the rcon command, e.g. say "getting farmed lads"',
+            }
+        },
+        "required": ["command"],
+    },
+}
 
 
 def load_system():
-    """System prompt is configurable: read it from BOT_PROMPT_FILE (a ConfigMap
-    mount) if present and non-empty, else fall back to the built-in default. Lets
-    the bot's personality be retuned via GitOps with no image rebuild."""
     path = os.environ.get("BOT_PROMPT_FILE")
     if path and os.path.exists(path):
         with open(path) as fh:
@@ -42,81 +65,83 @@ def load_system():
     return DEFAULT_SYSTEM
 
 
-SYSTEM = load_system()
+def format_event(ev):
+    """One terse transcript line for an absorbed event, or None to skip."""
+    t = ev["type"]
+    if t == "chat":
+        scope = " (team)" if ev.get("team_only") else ""
+        return f'{ev["name"]}{scope}: {ev["msg"]}'
+    if t == "kill":
+        return f'{ev["killer"]} killed {ev["victim"]} ({ev["weapon"]})'
+    if t == "connect":
+        return f'{ev["name"]} {ev["action"]}'
+    if t == "world":
+        detail = f' ({ev["detail"]})' if ev.get("detail") else ""
+        return f'[{ev["event"]}{detail}]'
+    return None
 
 
-class World:
-    """Running model of the match, rebuilt continuously from log events."""
-
+class Bot:
     def __init__(self):
-        self.current_map = None
-        self.recent = collections.deque(maxlen=200)
-        self.kills = collections.Counter()
-        self.deaths = collections.Counter()
-        self.humans = set()
-        self.last_round = None
-
-    def update(self, ev):
-        t = ev["type"]
-        self.recent.append(ev)
-        if t == "kill":
-            self.kills[ev["killer"]] += 1
-            self.deaths[ev["victim"]] += 1
-        elif t == "connect":
-            if ev["action"] == "entered the game":
-                self.humans.add(ev["name"])
-            elif "disconnect" in ev["action"]:
-                self.humans.discard(ev["name"])
-        elif t == "world" and ev["event"] in ("Round_Win", "Game_Over"):
-            self.last_round = f'{ev["event"]} {ev.get("detail") or ""}'.strip()
-        elif t == "map":  # emitted once tail.py grows Loading/Started map parsing
-            self.current_map = ev["name"]
-            self.kills.clear()
-            self.deaths.clear()
-
-    def snapshot(self, asker):
-        top = self.kills.most_common(3)
-        recent_kills = [e for e in self.recent if e["type"] == "kill"][-RECENT_KILLS:]
-        lines = [
-            f"map: {self.current_map or 'unknown'}",
-            f"humans in game: {', '.join(sorted(self.humans)) or 'none (bots only)'}",
-            "top fraggers: " + (", ".join(f"{n} ({k})" for n, k in top) or "nobody yet"),
-            f"{asker}'s line: {self.kills[asker]} kills / {self.deaths[asker]} deaths",
-            "recent kills:",
-        ]
-        lines += [f'  {e["killer"]} -> {e["victim"]} ({e["weapon"]})' for e in recent_kills]
-        if self.last_round:
-            lines.append(f"last round: {self.last_round}")
-        return "\n".join(lines)
-
-
-def invoke_claude(snapshot, asker, request):
-    prompt = (
-        f"{SYSTEM}\n\n=== MATCH STATE ===\n{snapshot}\n\n"
-        f'=== REQUEST ===\n{asker} said: "{TRIGGER} {request}"\n'
-    )
-    # Flags verified against cc-source 2.1.119: `dontAsk` denies anything not in
-    # --allowedTools with no prompts (tighter than bypassPermissions, and works
-    # as non-root). The Bash(rcon:*) prefix syntax is the one bit to confirm on
-    # first deploy — if rcon gets denied, try `Bash(rcon *)`.
-    try:
-        r = subprocess.run(
-            ["claude", "-p", prompt,
-             "--allowedTools", "Bash(rcon:*)",
-             "--permission-mode", "dontAsk"],
-            capture_output=True, text=True, timeout=CLAUDE_TIMEOUT,
+        self.client = anthropic.Anthropic(
+            base_url=os.environ.get("ANTHROPIC_BASE_URL"),
+            auth_token=os.environ["ANTHROPIC_AUTH_TOKEN"],
         )
-        print(f"[claude] {asker}: {request!r}\n{r.stdout.strip()}", flush=True)
-        if r.returncode != 0:
-            print(f"[claude rc={r.returncode}] {r.stderr.strip()}", flush=True)
-    except subprocess.TimeoutExpired:
-        print(f"[claude timeout on: {request!r}]", flush=True)
+        self.system = load_system()
+        self.history = []  # accumulating [{role, content}] conversation
+        self.obs = []      # transcript lines since the last trigger
+
+    def observe(self, ev):
+        line = format_event(ev)
+        if line:
+            self.obs.append(line)
+
+    def respond(self, asker, request):
+        preamble = ""
+        if self.obs:
+            preamble = "Server activity since you last spoke:\n" + "\n".join(self.obs) + "\n\n"
+        self.obs = []
+        self.history.append(
+            {"role": "user", "content": f'{preamble}{asker} says: {TRIGGER} {request}'}
+        )
+        print(f"[trigger] {asker}: {request!r}", flush=True)
+        t0 = time.monotonic()
+        for _ in range(MAX_TOOL_HOPS):
+            try:
+                resp = self.client.messages.create(
+                    model=MODEL, max_tokens=MAX_TOKENS,
+                    system=self.system, messages=self.history, tools=[RCON_TOOL],
+                )
+            except Exception as e:
+                print(f"[model error] {e}", flush=True)
+                self.history.pop()  # don't poison history with a half turn
+                return
+            self.history.append({"role": "assistant", "content": resp.content})
+            for block in resp.content:
+                if block.type == "text" and block.text.strip():
+                    print(f"[bot] {block.text.strip()}", flush=True)
+            tool_uses = [b for b in resp.content if b.type == "tool_use"]
+            if not tool_uses:
+                break
+            results = []
+            for tu in tool_uses:
+                cmd = tu.input.get("command", "")
+                try:
+                    out = run_rcon(cmd)
+                except Exception as e:
+                    out = f"rcon error: {e}"
+                print(f"[rcon] {cmd}  ->  {out or '(sent)'}", flush=True)
+                results.append(
+                    {"type": "tool_result", "tool_use_id": tu.id, "content": out or "(sent)"}
+                )
+            self.history.append({"role": "user", "content": results})
+        print(f"[done {time.monotonic() - t0:.1f}s, history={len(self.history)} turns]", flush=True)
 
 
 def main():
-    world = World()
+    bot = Bot()
     last_ns = time.time_ns()
-    print(f"tf2-bot up — accumulating world-model, waiting for {TRIGGER}\n", flush=True)
+    print(f"tf2-bot up (persistent context) — absorbing, waiting for {TRIGGER}", flush=True)
     while True:
         now = time.time_ns()
         try:
@@ -134,9 +159,10 @@ def main():
             ev = parse(content)
             if not ev:
                 continue
-            world.update(ev)
             if ev["type"] == "trigger":
-                invoke_claude(world.snapshot(ev["name"]), ev["name"], ev["request"] or "")
+                bot.respond(ev["name"], ev["request"] or "")
+            else:
+                bot.observe(ev)
         time.sleep(POLL_SECONDS)
 
 
