@@ -2,7 +2,7 @@
 """tf2-bot supervisor — trigger-invoked, full-context.
 
 Between triggers this does nothing but accumulate a world-model off the parsed
-log stream. When a player types `!claude ...`, it snapshots the current match
+log stream. When a player types `!bot ...`, it snapshots the current match
 state, staples it to the request, and hands the lot to a headless Claude Code
 (DeepSeek-backed) which responds by issuing rcon commands itself.
 

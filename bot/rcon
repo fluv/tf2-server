@@ -58,9 +58,21 @@ def main():
                     sys.exit("rcon auth failed")
                 break
         sock.sendall(pack(2, SERVERDATA_EXECCOMMAND, command))
-        _, _, body = read_packet(sock)
-        if body.strip():
-            print(body.strip())
+        # srcds can answer EXECCOMMAND with several packets (an empty
+        # RESPONSE_VALUE then the body), or with nothing meaningful for
+        # fire-and-forget commands like `say`. Read whatever arrives in a short
+        # window rather than blocking on exactly one packet.
+        sock.settimeout(1.0)
+        parts = []
+        try:
+            while True:
+                _, _, body = read_packet(sock)
+                if body:
+                    parts.append(body)
+        except (socket.timeout, ConnectionError):
+            pass
+        if parts:
+            print("".join(parts).strip())
 
 
 if __name__ == "__main__":
