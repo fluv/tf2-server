@@ -12,13 +12,14 @@ Depends on the server having `log on` set, otherwise the structured `L`-prefixed
 lines (kills, say, connects) are never emitted and you'll only see join/leave.
 """
 import json
+import os
 import re
 import sys
 import time
 import urllib.parse
 import urllib.request
 
-LOKI = "http://10.43.231.187:3100"
+LOKI = os.environ.get("LOKI_URL", "http://10.43.231.187:3100")
 QUERY = '{namespace="tf2"}'
 POLL_SECONDS = 3
 EVENTS_FILE = "/home/claude/tf2-bot/events.jsonl"

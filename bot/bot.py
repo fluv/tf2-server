@@ -116,7 +116,7 @@ def invoke_claude(snapshot, asker, request):
 def main():
     world = World()
     last_ns = time.time_ns()
-    print("tf2-bot up — accumulating world-model, waiting for !claude\n", flush=True)
+    print(f"tf2-bot up — accumulating world-model, waiting for {TRIGGER}\n", flush=True)
     while True:
         now = time.time_ns()
         try:
