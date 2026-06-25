@@ -1,0 +1,68 @@
+---
+# tf2-bot — headless Claude Code (DeepSeek-backed) heckler. Reads the match via
+# Loki, talks back via rcon. Needs NO k8s API access: Loki is HTTP, rcon is TCP.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tf2-bot
+  namespace: tf2
+  labels:
+    app: tf2-bot
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tf2-bot
+  template:
+    metadata:
+      labels:
+        app: tf2-bot
+    spec:
+      nodeSelector:
+        kubernetes.io/arch: amd64  # claude-code/node, match the server
+      containers:
+        - name: tf2-bot
+          image: ghcr.io/fluv/tf2-bot:latest  # tag kept in sync with bot-image.yml
+          env:
+            # DeepSeek key. AUTH_TOKEN (not API_KEY) so it's sent as Bearer with
+            # no interactive prompt. Mint the secret to match (key below).
+            - name: ANTHROPIC_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: tf2-bot
+                  key: deepseek-api-key
+            - name: ANTHROPIC_MODEL
+              value: deepseek-v4-flash
+            # rcon password — reuse the server's existing secret by reference.
+            - name: RCON_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: srcds
+                  key: rcon
+            # System prompt is read from this file (a ConfigMap mount), so the
+            # bot's personality is editable without rebuilding the image.
+            - name: BOT_PROMPT_FILE
+              value: /config/system.txt
+          volumeMounts:
+            - name: prompt
+              mountPath: /config
+              readOnly: true
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              memory: 1Gi  # node + a claude-code invocation per trigger
+      volumes:
+        - name: prompt
+          configMap:
+            name: tf2-bot-cfg
+      terminationGracePeriodSeconds: 10
