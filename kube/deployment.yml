@@ -117,9 +117,9 @@ spec:
                   - "/bin/bash"
                   - "-c"
                   - "pkill -INT srcds_linux64; sleep 3"
-      resources:
-        requests:
-          ephemeral-storage: 15Gi # TF2 is 14Gi in 2026
+          resources:
+            requests:
+              ephemeral-storage: 15Gi # TF2 is 14Gi in 2026
       terminationGracePeriodSeconds: 20
       volumes:
         - name: game
