@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tf2-server-cfg
+  namespace: tf2
+data:
+  server.cfg: |
+    echo "ConfigMap loaded"
+    sv_lan 0
+    sv_region 3
+    sv_password ""
