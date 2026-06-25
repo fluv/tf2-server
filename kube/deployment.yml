@@ -1,3 +1,4 @@
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -16,17 +17,17 @@ spec:
         app: tf2
     spec:
       nodeSelector:
-        kubernetes.io/arch: amd64 # avoid pi
+        kubernetes.io/arch: amd64  # avoid pi
       initContainers:
         - name: link-config
           image: busybox:1.37
           command:
-          - sh
-          - -c
-          - |
-            mkdir -p /game/tf/cfg
-            ln -sfn /config/server.cfg /game/tf/cfg/server.cfg
-            ln -sfn /config/mapcycle.txt /game/tf/cfg/mapcycle.txt
+            - sh
+            - -c
+            - |
+              mkdir -p /game/tf/cfg
+              ln -sfn /config/server.cfg /game/tf/cfg/server.cfg
+              ln -sfn /config/mapcycle.txt /game/tf/cfg/mapcycle.txt
           securityContext:
             seccompProfile:
               type: RuntimeDefault
@@ -35,7 +36,7 @@ spec:
             runAsGroup: 1000
             allowPrivilegeEscalation: false
             capabilities:
-              drop: 
+              drop:
                 - ALL
           volumeMounts:
             - name: game
@@ -44,78 +45,78 @@ spec:
               mountPath: /config
               readOnly: true
       containers:
-      - name: tf2
-        image: cm2network/tf2
-        ports:
-          - containerPort: 27015
-        securityContext:
-          seccompProfile:
-            type: RuntimeDefault
-          runAsNonRoot: true
-          runAsUser: 1000
-          allowPrivilegeEscalation: false
-          capabilities:
-            drop:
-              - "ALL"
-        readinessProbe:
-          failureThreshold: 30 # 5 min
-          periodSeconds: 10
-          timeoutSeconds: 3
-          exec:
-            command:
-              # https://developer.valvesoftware.com/wiki/Server_queries#A2S_INFO
-            - /bin/bash
-            - -c
-            - >-
-              exec 3<>/dev/udp/$POD_IP/27015;
-              printf "\377\377\377\377TSource Engine Query\000" >&3;
-              head -c1 <&3 >/dev/null
-        volumeMounts:
-          - name: game
-            mountPath: /home/steam/tf-dedicated
-          - name: config
-            mountPath: /config
-            readOnly: true
-        env:
-        - name: SRCDS_TOKEN
-          valueFrom:
-             secretKeyRef:
-               name: srcds
-               key: token
-               optional: true
-        - name: SRCDS_RCONPW
-          valueFrom:
-             secretKeyRef:
-               name: srcds
-               key: rcon
-               optional: false
-        - name: SRCDS_MAXPLAYERS
-          value: "24"
-        - name: SRCDS_STARTMAP
-          value: pd_selbyen
-        - name: SRCDS_WORKSHOP_AUTHKEY
-          valueFrom:
-            secretKeyRef:
-              name: srcds
-              key: workshop
-              optional: true
-        - name: SRCDS_HOSTNAME
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.name
-        - name: POD_IP
-          # used for readiness probe as srcds doesn't respond on localhost?
-          valueFrom:
-              fieldRef:
-                fieldPath: status.podIP
-        lifecycle:
-          preStop:
-            # shut down the server gracefully
+        - name: tf2
+          image: cm2network/tf2
+          ports:
+            - containerPort: 27015
+          securityContext:
+            seccompProfile:
+              type: RuntimeDefault
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - "ALL"
+          readinessProbe:
+            failureThreshold: 30  # 5 min
+            periodSeconds: 10
+            timeoutSeconds: 3
             exec:
               command:
-                - "/bin/bash"
-                - "-c"
-                - "pkill -INT srcds_linux64; sleep 3"
+                # https://developer.valvesoftware.com/wiki/Server_queries#A2S_INFO
+                - /bin/bash
+                - -c
+                - >-
+                  exec 3<>/dev/udp/$POD_IP/27015;
+                  printf "\377\377\377\377TSource Engine Query\000" >&3;
+                  head -c1 <&3 >/dev/null
+          volumeMounts:
+            - name: game
+              mountPath: /home/steam/tf-dedicated
+            - name: config
+              mountPath: /config
+              readOnly: true
+          env:
+            - name: SRCDS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: srcds
+                  key: token
+                  optional: true
+            - name: SRCDS_RCONPW
+              valueFrom:
+                secretKeyRef:
+                  name: srcds
+                  key: rcon
+                  optional: false
+            - name: SRCDS_MAXPLAYERS
+              value: "24"
+            - name: SRCDS_STARTMAP
+              value: pd_selbyen
+            - name: SRCDS_WORKSHOP_AUTHKEY
+              valueFrom:
+                secretKeyRef:
+                  name: srcds
+                  key: workshop
+                  optional: true
+            - name: SRCDS_HOSTNAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_IP
+              # used for readiness probe as srcds doesn't respond on localhost?
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+          lifecycle:
+            preStop:
+              # shut down the server gracefully
+              exec:
+                command:
+                  - "/bin/bash"
+                  - "-c"
+                  - "pkill -INT srcds_linux64; sleep 3"
       resources:
         requests:
           ephemeral-storage: 15Gi # TF2 is 14Gi in 2026
