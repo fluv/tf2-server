@@ -14,3 +14,17 @@ spec:
       # vanilla k8s nodeports are 30000-32767 so we can't use 27015:
       nodePort: 30015
       protocol: UDP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tf2-rcon
+  namespace: tf2
+spec:
+  type: ClusterIP
+  selector:
+    app: tf2
+  ports:
+    - port: 27015
+      targetPort: 27015
+      protocol: TCP

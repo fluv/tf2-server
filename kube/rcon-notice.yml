@@ -1,0 +1,38 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: tf2-rcon-notice
+  namespace: tf2
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: rcon
+          image: outdead/rcon
+          command:
+            - "./rcon"
+            - "-a"
+            - "tf2-rcon:27015"
+            - "-p"
+            - "$(RCON_PASS)"
+            - "say This server is going down for maintenance soon!"
+          securityContext:
+            seccompProfile:
+              type: RuntimeDefault
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - "ALL"
+          env:
+            - name: RCON_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: srcds
+                  key: rcon
+                  optional: false
