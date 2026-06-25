@@ -39,20 +39,29 @@ logging.basicConfig(
 )
 log = logging.getLogger("tf2-bot")
 
-DEFAULT_SYSTEM = f"""You are the live bot on a Team Fortress 2 server, summoned \
-when a player types {TRIGGER} in chat. You have been silently watching the \
-server: chat, kills and round events appear in the running conversation, so you \
-already know what has been said and who is doing well.
+# The system prompt is two independently-configurable parts. MECHANICAL is the
+# operational contract (how the bot works) and should rarely change. CHARACTER
+# is the personality and is meant to be freely retuned. Each has its own file
+# (BOT_MECHANICAL_FILE / BOT_CHARACTER_FILE) with these baked defaults.
+DEFAULT_MECHANICAL = f"""You are the live bot on a Team Fortress 2 server, \
+summoned when a player types {TRIGGER} in chat. You have been silently watching \
+the server: chat, kills and round events appear in the running conversation, so \
+you already know what has been said and who is doing well.
 
-CRITICAL: players only hear you through the rcon `say` command. Plain text you \
-write is INVISIBLE to them -- it goes only to the logs. To say anything in-game \
-you MUST call the rcon tool, e.g. say "your line". Never reply with bare text \
-and assume it was heard.
+You have two separate channels, keep them apart:
+- Plain text is your PRIVATE reasoning. Players never see it; it goes only to \
+the logs. Use it to think -- weigh what is happening and decide what to do.
+- The rcon `say` command is your ONLY voice to players. Anything you want them \
+to hear must be a say call.
 
-Respond IN CHARACTER: almost always a single rcon say "<one line, <=120 chars>". \
-Use other rcon commands when a player clearly asks (changelevel, tf_bot_add, \
-nextlevel, mp_restartgame). Be witty, terse, a bit of a heckler, and lean on \
-what you have actually seen."""
+So: reason in plain text, then speak via rcon say "<one line, <=120 chars>". \
+Never put a spoken line in plain text -- it will not be heard. Use other rcon \
+commands when a player clearly asks (changelevel, tf_bot_add, nextlevel, \
+mp_restartgame)."""
+
+DEFAULT_CHARACTER = """Your personality: witty, terse, a bit of a heckler. Lean \
+on what you have actually seen -- who is fragging, the scoreline, the map, what \
+has been said in chat -- to make your say lines land."""
 
 RCON_TOOL = {
     "name": "rcon",
@@ -74,14 +83,21 @@ RCON_TOOL = {
 }
 
 
-def load_system():
-    path = os.environ.get("BOT_PROMPT_FILE")
+def _load_prompt(env_var, default):
+    path = os.environ.get(env_var)
     if path and os.path.exists(path):
         with open(path) as fh:
             text = fh.read().strip()
             if text:
                 return text
-    return DEFAULT_SYSTEM
+    return default
+
+
+def load_system():
+    """Mechanical contract + character, each independently configurable."""
+    mechanical = _load_prompt("BOT_MECHANICAL_FILE", DEFAULT_MECHANICAL)
+    character = _load_prompt("BOT_CHARACTER_FILE", DEFAULT_CHARACTER)
+    return f"{mechanical}\n\n{character}"
 
 
 def format_event(ev):
@@ -129,8 +145,6 @@ class Bot:
                  asker, request, len(self.history), pending)
         log.debug("context sent to model ↓\n%s", user)
         t0 = time.monotonic()
-        said = False        # did the model actually speak in-game via `say`?
-        last_text = ""      # its most recent prose, for the fallback
         for hop in range(1, MAX_TOOL_HOPS + 1):
             h0 = time.monotonic()
             try:
@@ -148,17 +162,16 @@ class Bot:
                      hop, resp.stop_reason, toks, time.monotonic() - h0)
             self.history.append({"role": "assistant", "content": resp.content})
             for block in resp.content:
+                # plain text is the model's private reasoning -- log it, never
+                # send it to players. Only `say` (below) reaches the game.
                 if block.type == "text" and block.text.strip():
-                    last_text = block.text.strip()
-                    log.info("bot says | %s", last_text)
+                    log.info("reasoning | %s", block.text.strip())
             tool_uses = [b for b in resp.content if b.type == "tool_use"]
             if not tool_uses:
                 break
             results = []
             for tu in tool_uses:
                 cmd = tu.input.get("command", "")
-                if cmd.strip().lower().startswith("say"):
-                    said = True
                 try:
                     out = run_rcon(cmd)
                     log.info("rcon | %s  →  %s", cmd, out or "(sent)")
@@ -169,16 +182,6 @@ class Bot:
                     {"type": "tool_result", "tool_use_id": tu.id, "content": out or "(sent)"}
                 )
             self.history.append({"role": "user", "content": results})
-        # Safety net: the model talked but never spoke in-game -- forward its
-        # words to chat so the reply isn't stranded in the logs (the failure mode
-        # where banter goes to stdout instead of the game).
-        if not said and last_text:
-            msg = " ".join(last_text.split())[:120]
-            try:
-                run_rcon(f"say {msg}")
-                log.warning("fallback say | model emitted text but no say; forwarded: %s", msg)
-            except Exception as e:
-                log.error("fallback say failed: %s", e)
         log.info("done | %.1fs total, history now %d turns", time.monotonic() - t0, len(self.history))
 
 

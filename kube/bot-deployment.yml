@@ -39,10 +39,12 @@ spec:
                 secretKeyRef:
                   name: srcds
                   key: rcon
-            # System prompt is read from this file (a ConfigMap mount), so the
-            # bot's personality is editable without rebuilding the image.
-            - name: BOT_PROMPT_FILE
-              value: /config/system.txt
+            # System prompt = mechanical contract + character, each from its own
+            # ConfigMap file so they retune independently without a rebuild.
+            - name: BOT_MECHANICAL_FILE
+              value: /config/mechanical.txt
+            - name: BOT_CHARACTER_FILE
+              value: /config/character.txt
           volumeMounts:
             - name: prompt
               mountPath: /config
