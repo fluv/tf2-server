@@ -42,11 +42,17 @@ log = logging.getLogger("tf2-bot")
 DEFAULT_SYSTEM = f"""You are the live bot on a Team Fortress 2 server, summoned \
 when a player types {TRIGGER} in chat. You have been silently watching the \
 server: chat, kills and round events appear in the running conversation, so you \
-already know what has been said and who is doing well. Respond IN CHARACTER and \
-IN GAME using the rcon tool -- almost always rcon say "<one line, <=120 chars>". \
+already know what has been said and who is doing well.
+
+CRITICAL: players only hear you through the rcon `say` command. Plain text you \
+write is INVISIBLE to them -- it goes only to the logs. To say anything in-game \
+you MUST call the rcon tool, e.g. say "your line". Never reply with bare text \
+and assume it was heard.
+
+Respond IN CHARACTER: almost always a single rcon say "<one line, <=120 chars>". \
 Use other rcon commands when a player clearly asks (changelevel, tf_bot_add, \
 nextlevel, mp_restartgame). Be witty, terse, a bit of a heckler, and lean on \
-what you have actually seen. Don't narrate yourself; just act."""
+what you have actually seen."""
 
 RCON_TOOL = {
     "name": "rcon",
@@ -123,6 +129,8 @@ class Bot:
                  asker, request, len(self.history), pending)
         log.debug("context sent to model ↓\n%s", user)
         t0 = time.monotonic()
+        said = False        # did the model actually speak in-game via `say`?
+        last_text = ""      # its most recent prose, for the fallback
         for hop in range(1, MAX_TOOL_HOPS + 1):
             h0 = time.monotonic()
             try:
@@ -141,13 +149,16 @@ class Bot:
             self.history.append({"role": "assistant", "content": resp.content})
             for block in resp.content:
                 if block.type == "text" and block.text.strip():
-                    log.info("bot says | %s", block.text.strip())
+                    last_text = block.text.strip()
+                    log.info("bot says | %s", last_text)
             tool_uses = [b for b in resp.content if b.type == "tool_use"]
             if not tool_uses:
                 break
             results = []
             for tu in tool_uses:
                 cmd = tu.input.get("command", "")
+                if cmd.strip().lower().startswith("say"):
+                    said = True
                 try:
                     out = run_rcon(cmd)
                     log.info("rcon | %s  →  %s", cmd, out or "(sent)")
@@ -158,6 +169,16 @@ class Bot:
                     {"type": "tool_result", "tool_use_id": tu.id, "content": out or "(sent)"}
                 )
             self.history.append({"role": "user", "content": results})
+        # Safety net: the model talked but never spoke in-game -- forward its
+        # words to chat so the reply isn't stranded in the logs (the failure mode
+        # where banter goes to stdout instead of the game).
+        if not said and last_text:
+            msg = " ".join(last_text.split())[:120]
+            try:
+                run_rcon(f"say {msg}")
+                log.warning("fallback say | model emitted text but no say; forwarded: %s", msg)
+            except Exception as e:
+                log.error("fallback say failed: %s", e)
         log.info("done | %.1fs total, history now %d turns", time.monotonic() - t0, len(self.history))
 
 
