@@ -11,9 +11,15 @@ request, and rcon exposed as a tool. The model replies in-game by calling rcon.
 The conversation lives in this process, so context accumulates across triggers
 like a chat session. The model API is stateless; "memory" is just the growing
 message list we resend on each call. rcon runs here in the tool loop, so every
-command the model issues is logged to the pod stdout for free.
+command the model issues is logged.
+
+Logging: timestamped via the stdlib logger. LOG_LEVEL=INFO gives per-interaction
+detail (trigger, model timing + token usage, bot replies, rcon); LOG_LEVEL=DEBUG
+adds the firehose -- every absorbed event and the full context sent to the model.
 """
+import logging
 import os
+import sys
 import time
 
 import anthropic
@@ -25,6 +31,13 @@ POLL_SECONDS = 1
 MODEL = os.environ.get("ANTHROPIC_MODEL", "deepseek-v4-flash")
 MAX_TOKENS = 512
 MAX_TOOL_HOPS = 5  # safety cap on the tool loop per trigger
+
+logging.basicConfig(
+    level=os.environ.get("LOG_LEVEL", "INFO").upper(),
+    format="%(asctime)s %(levelname)-5s %(message)s",
+    stream=sys.stdout,
+)
+log = logging.getLogger("tf2-bot")
 
 DEFAULT_SYSTEM = f"""You are the live bot on a Team Fortress 2 server, summoned \
 when a player types {TRIGGER} in chat. You have been silently watching the \
@@ -90,36 +103,45 @@ class Bot:
         self.system = load_system()
         self.history = []  # accumulating [{role, content}] conversation
         self.obs = []      # transcript lines since the last trigger
+        log.info("client ready | model=%s, system=%d chars", MODEL, len(self.system))
 
     def observe(self, ev):
         line = format_event(ev)
         if line:
             self.obs.append(line)
+            log.debug("absorb | %s", line)
 
     def respond(self, asker, request):
+        pending = len(self.obs)
         preamble = ""
         if self.obs:
             preamble = "Server activity since you last spoke:\n" + "\n".join(self.obs) + "\n\n"
         self.obs = []
-        self.history.append(
-            {"role": "user", "content": f'{preamble}{asker} says: {TRIGGER} {request}'}
-        )
-        print(f"[trigger] {asker}: {request!r}", flush=True)
+        user = f"{preamble}{asker} says: {TRIGGER} {request}"
+        self.history.append({"role": "user", "content": user})
+        log.info("trigger | %s: %r  (history=%d turns, +%d obs absorbed)",
+                 asker, request, len(self.history), pending)
+        log.debug("context sent to model ↓\n%s", user)
         t0 = time.monotonic()
-        for _ in range(MAX_TOOL_HOPS):
+        for hop in range(1, MAX_TOOL_HOPS + 1):
+            h0 = time.monotonic()
             try:
                 resp = self.client.messages.create(
                     model=MODEL, max_tokens=MAX_TOKENS,
                     system=self.system, messages=self.history, tools=[RCON_TOOL],
                 )
             except Exception as e:
-                print(f"[model error] {e}", flush=True)
+                log.error("model call failed: %s", e)
                 self.history.pop()  # don't poison history with a half turn
                 return
+            u = getattr(resp, "usage", None)
+            toks = f"in={u.input_tokens} out={u.output_tokens}" if u else "tokens=?"
+            log.info("model | hop %d  stop=%s  %s  (%.1fs)",
+                     hop, resp.stop_reason, toks, time.monotonic() - h0)
             self.history.append({"role": "assistant", "content": resp.content})
             for block in resp.content:
                 if block.type == "text" and block.text.strip():
-                    print(f"[bot] {block.text.strip()}", flush=True)
+                    log.info("bot says | %s", block.text.strip())
             tool_uses = [b for b in resp.content if b.type == "tool_use"]
             if not tool_uses:
                 break
@@ -128,26 +150,27 @@ class Bot:
                 cmd = tu.input.get("command", "")
                 try:
                     out = run_rcon(cmd)
+                    log.info("rcon | %s  →  %s", cmd, out or "(sent)")
                 except Exception as e:
                     out = f"rcon error: {e}"
-                print(f"[rcon] {cmd}  ->  {out or '(sent)'}", flush=True)
+                    log.error("rcon | %s  →  %s", cmd, out)
                 results.append(
                     {"type": "tool_result", "tool_use_id": tu.id, "content": out or "(sent)"}
                 )
             self.history.append({"role": "user", "content": results})
-        print(f"[done {time.monotonic() - t0:.1f}s, history={len(self.history)} turns]", flush=True)
+        log.info("done | %.1fs total, history now %d turns", time.monotonic() - t0, len(self.history))
 
 
 def main():
     bot = Bot()
     last_ns = time.time_ns()
-    print(f"tf2-bot up (persistent context) — absorbing, waiting for {TRIGGER}", flush=True)
+    log.info("up (persistent context) — absorbing, waiting for %s", TRIGGER)
     while True:
         now = time.time_ns()
         try:
             rows = loki_query(last_ns + 1, now)
         except Exception as e:
-            print(f"[loki error: {e}]", flush=True)
+            log.error("loki query failed: %s", e)
             time.sleep(POLL_SECONDS)
             continue
         for ns, line in rows:
@@ -170,4 +193,4 @@ if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        print("\nstopped.")
+        log.info("stopped.")
