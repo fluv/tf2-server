@@ -14,6 +14,8 @@ COPY tail.py bot.py rcon.py /app/
 ENV ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic \
     LOKI_URL=http://10.43.231.187:3100 \
     RCON_ADDR=tf2-rcon:27015 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    LOG_LEVEL=DEBUG
+
 
 CMD ["python", "bot.py"]
