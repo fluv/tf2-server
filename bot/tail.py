@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """tf2-bot prototype — tail the TF2 dedicated-server log out of Loki, strip the
-noise, and surface only the events worth reacting to: chat, !claude triggers,
+noise, and surface only the events worth reacting to: chat, !bot triggers,
 kills, connects, round/game state.
 
 Read-only by design: it polls Loki over HTTP and prints. No rcon, no secrets,
@@ -93,7 +93,7 @@ def parse(content: str):
             "team": m.group("team"),
             "team_only": m.group("kind") == "say_team",
             "msg": msg,
-            # for a trigger, the text after !claude is the actual request
+            # for a trigger, the text after !bot is the actual request
             "request": msg.strip()[len(TRIGGER):].strip() if triggered else None,
         }
     m = KILL_RE.match(content)
@@ -131,7 +131,7 @@ def loki_query(start_ns: int, end_ns: int):
         "query": QUERY,
         "start": str(start_ns),
         "end": str(end_ns),
-        "limit": "1000",
+        "limit": "5000",
         "direction": "forward",
     })
     url = f"{LOKI}/loki/api/v1/query_range?{params}"
