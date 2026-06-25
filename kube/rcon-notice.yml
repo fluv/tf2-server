@@ -19,7 +19,7 @@ spec:
             - "tf2-rcon:27015"
             - "-p"
             - "$(RCON_PASS)"
-            - "say This server is going down for maintenance soon!"
+            - "say Server's applying an update, one moment..."
           securityContext:
             seccompProfile:
               type: RuntimeDefault
