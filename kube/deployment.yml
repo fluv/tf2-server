@@ -18,6 +18,8 @@ spec:
     spec:
       nodeSelector:
         kubernetes.io/arch: amd64  # avoid pi
+      securityContext:
+        fsGroup: 1000
       initContainers:
         - name: link-config
           image: busybox:1.37
