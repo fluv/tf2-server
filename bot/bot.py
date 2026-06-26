@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 """tf2-bot supervisor — persistent context.
 
-Runs continuously, polling the server log out of Loki. Every useful event
-(chat, kills, connects, round state) is appended to a running transcript with
-NO model call -- the bot is "in the room", absorbing silently. Only when a
-player types `!bot ...` does it call the model, with the full conversation
-history (every prior turn) plus the transcript since the last turn plus the
-request, and rcon exposed as a tool. The model replies in-game by calling rcon.
+Runs continuously, polling the server log out of Loki. Noise is stripped; every
+remaining line is appended verbatim to a running transcript with NO model call --
+the bot is "in the room", absorbing silently. Only when a player types `!bot ...`
+does it call the model, with the full conversation history (every prior turn) plus
+the raw transcript since the last turn plus the request, and rcon exposed as a
+tool. The model replies in-game by calling rcon.
+
+Raw logs beat bespoke parsers: the model reads structured log lines fine and won't
+silently miss event types that a hand-rolled regex didn't cover.
 
 The conversation lives in this process, so context accumulates across triggers
 like a chat session. The model API is stateless; "memory" is just the growing
@@ -15,7 +18,7 @@ command the model issues is logged.
 
 Logging: timestamped via the stdlib logger. LOG_LEVEL=INFO gives per-interaction
 detail (trigger, model timing + token usage, bot replies, rcon); LOG_LEVEL=DEBUG
-adds the firehose -- every absorbed event and the full context sent to the model.
+adds the firehose -- every absorbed line and the full context sent to the model.
 """
 import logging
 import os
@@ -24,7 +27,7 @@ import time
 
 import anthropic
 
-from tail import LOG_PREFIX, TRIGGER, is_noise, parse, loki_query
+from tail import LOG_PREFIX, TRIGGER, is_noise, detect_trigger, loki_query
 from rcon import run_rcon
 
 POLL_SECONDS = 1
@@ -126,35 +129,6 @@ def load_system():
     return f"{mechanical}\n\n{character}"
 
 
-def format_event(ev):
-    """One terse transcript line for an absorbed event, or None to skip."""
-    t = ev["type"]
-    if t == "chat":
-        scope = " (team)" if ev.get("team_only") else ""
-        return f'{ev["name"]}{scope}: {ev["msg"]}'
-    if t == "kill":
-        return f'{ev["killer"]} killed {ev["victim"]} ({ev["weapon"]})'
-    if t == "suicide":
-        return f'{ev["name"]} died by their own hand'
-    if t == "triggered":
-        n, tgt, e = ev["name"], ev.get("target"), ev["event"]
-        return {
-            "domination": f"{n} is dominating {tgt}",
-            "revenge": f"{n} got revenge on {tgt}",
-            "kill assist": f"{n} assisted on {tgt}",
-            "medic_death": f"{n} killed medic {tgt}",
-            "chargedeployed": f"{n} deployed an ubercharge",
-            "killedobject": f"{n} destroyed a building",
-            "player_builtobject": f"{n} built a building",
-        }.get(e)
-    if t == "connect":
-        return f'{ev["name"]} {ev["action"]}'
-    if t == "world":
-        detail = f' ({ev["detail"]})' if ev.get("detail") else ""
-        return f'[{ev["event"]}{detail}]'
-    return None
-
-
 class Bot:
     def __init__(self):
         self.client = anthropic.Anthropic(
@@ -167,12 +141,10 @@ class Bot:
         self.obs = []      # transcript lines since the last trigger
         log.info("client ready | model=%s, system=%d chars", MODEL, len(self.system))
 
-    def observe(self, ev, ts=None):
-        line = format_event(ev)
-        if line:
-            stamped = f"[{ts}] {line}" if ts else line
-            self.obs.append(stamped)
-            log.debug("absorb | %s", stamped)
+    def observe(self, content, ts=None):
+        stamped = f"[{ts}] {content}" if ts else content
+        self.obs.append(stamped)
+        log.debug("absorb | %s", stamped)
 
     def respond(self, asker, request, ts=None):
         pending = len(self.obs)
@@ -250,13 +222,11 @@ def main():
             content = m.group("content") if m else line
             if is_noise(content):
                 continue
-            ev = parse(content)
-            if not ev:
-                continue
-            if ev["type"] == "trigger":
-                bot.respond(ev["name"], ev["request"] or "", ts)
+            trigger = detect_trigger(content)
+            if trigger:
+                bot.respond(trigger["name"], trigger["request"], ts)
             else:
-                bot.observe(ev, ts)
+                bot.observe(content, ts)
         time.sleep(POLL_SECONDS)
 
 
