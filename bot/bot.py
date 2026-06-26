@@ -121,6 +121,17 @@ def format_event(ev):
         return f'{ev["killer"]} killed {ev["victim"]} ({ev["weapon"]})'
     if t == "suicide":
         return f'{ev["name"]} died by their own hand'
+    if t == "triggered":
+        n, tgt, e = ev["name"], ev.get("target"), ev["event"]
+        return {
+            "domination": f"{n} is dominating {tgt}",
+            "revenge": f"{n} got revenge on {tgt}",
+            "kill assist": f"{n} assisted on {tgt}",
+            "medic_death": f"{n} killed medic {tgt}",
+            "chargedeployed": f"{n} deployed an ubercharge",
+            "killedobject": f"{n} destroyed a building",
+            "player_builtobject": f"{n} built a building",
+        }.get(e)
     if t == "connect":
         return f'{ev["name"]} {ev["action"]}'
     if t == "world":
