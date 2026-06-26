@@ -41,6 +41,7 @@ NOISE_SUBSTRINGS = (
     "position_report",  # every player's pos every ~3s — pure firehose
     "IPC function call",  # server perf internal
     "rcon from ",  # our own command echoed back by the server
+    ") stuck ("  # AI bot nav failures
 )
 
 # Source server-log grammar: L MM/DD/YYYY - HH:MM:SS: <content>
