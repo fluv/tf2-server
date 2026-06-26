@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
-"""tf2-bot prototype — tail the TF2 dedicated-server log out of Loki, strip the
-noise, and surface only the events worth reacting to: chat, !bot triggers,
-kills, connects, round/game state.
+"""tf2-bot tail module — poll server logs from Loki, strip noise, detect !bot triggers.
 
-Read-only by design: it polls Loki over HTTP and prints. No rcon, no secrets,
-nothing to deploy. This is the Pi-side proving ground for the parse pipeline
-before the in-cluster bot exists. The "brain" (DeepSeek / Claude Code) and the
-rcon write-back are deliberately not here yet.
+All non-noise lines are passed verbatim to the bot's context. No per-event parsing:
+a current model reads raw structured logs fine and won't miss event types that a
+hand-rolled regex parser didn't anticipate. Only !bot triggers need structural
+extraction (who asked, what they asked).
 
 Depends on the server having `log on` set, otherwise the structured `L`-prefixed
 lines (kills, say, connects) are never emitted and you'll only see join/leave.
@@ -22,11 +20,7 @@ import urllib.request
 LOKI = os.environ.get("LOKI_URL", "http://10.43.231.187:3100")
 QUERY = '{namespace="tf2"}'
 POLL_SECONDS = 3
-EVENTS_FILE = "/home/claude/tf2-bot/events.jsonl"
 
-# Noise philosophy lifted from /home/claude/tf2/log_parser.py (the client-side
-# parser, discussion #244) plus the server-side junk this server actually spews
-# — confirmed by eyeballing the live Loki stream.
 NOISE_SUBSTRINGS = (
     "SOLID_VPHYSICS",
     "[S_API FAIL]",
@@ -44,51 +38,20 @@ NOISE_SUBSTRINGS = (
     "env_cubemap",
     "Stopped sound",
     "Compact freed",
-    "position_report",  # verbose-logging firehose: every player's pos every ~3s
+    "position_report",  # every player's pos every ~3s — pure firehose
 )
 
-# Source server-log grammar. Every gameplay line is prefixed
-#   L MM/DD/YYYY - HH:MM:SS:
-# A player token is  "Name<userid><steamid><team>"  where steamid is
-# [U:1:xxxx] for humans, BOT for bots, Console for the server. Names can contain
-# almost anything, so each pattern anchors on the <userid><steamid><team> tail
-# and takes the name non-greedily up to it.
+# Source server-log grammar: L MM/DD/YYYY - HH:MM:SS: <content>
 LOG_PREFIX = re.compile(
     r"^L \d\d/\d\d/\d{4} - (?P<ts>\d\d:\d\d:\d\d):\s*(?P<content>.*?)\s*$"
 )
 
-KILL_RE = re.compile(
-    r'^"(?P<kname>.+?)<\d+><(?P<ksid>[^>]+)><(?P<kteam>[^>]*)>" killed '
-    r'"(?P<vname>.+?)<\d+><(?P<vsid>[^>]+)><(?P<vteam>[^>]*)>" with "(?P<weapon>[^"]+)"'
-)
-SUICIDE_RE = re.compile(
-    r'^"(?P<name>.+?)<\d+><(?P<sid>[^>]+)><(?P<team>[^>]*)>" committed suicide'
-)
+# Only used for trigger detection — not for general event parsing.
 CHAT_RE = re.compile(
     r'^"(?P<name>.+?)<\d+><(?P<sid>[^>]+)><(?P<team>[^>]*)>" '
-    r'(?P<kind>say|say_team) "(?P<msg>.*)"$'
+    r'(?:say|say_team) "(?P<msg>.*)"$'
 )
-CONNECT_RE = re.compile(
-    r'^"(?P<name>.+?)<\d+><(?P<sid>[^>]+)><(?P<team>[^>]*)>" '
-    r'(?P<action>connected, address|disconnected|entered the game)'
-)
-WORLD_RE = re.compile(
-    r'^(?:World|Team "(?P<wteam>[^"]+)") triggered "(?P<event>[^"]+)"'
-    r'(?:\s*\((?P<detail>.*)\))?'
-)
-# Player-triggered events the verbose log adds -- rivalry/teamplay/medic stats.
-PLAYER_TRIGGERED_RE = re.compile(
-    r'^"(?P<name>.+?)<\d+><(?P<sid>[^>]+)><(?P<team>[^>]*)>" triggered "(?P<event>[^"]+)"'
-    r'(?: against "(?P<tname>.+?)<\d+><[^>]+><(?P<tteam>[^>]*)>")?'
-)
-INTERESTING_TRIGGERS = {
-    "domination", "revenge", "kill assist", "medic_death",
-    "chargedeployed", "killedobject", "player_builtobject",
-}
 
-# A chat line that begins with this (after an optional leading space) is a
-# request aimed at the bot. Provider-agnostic on purpose — the brain behind it
-# isn't necessarily Claude.
 TRIGGER = "!bot"
 
 
@@ -96,65 +59,18 @@ def is_noise(line: str) -> bool:
     return any(sub in line for sub in NOISE_SUBSTRINGS)
 
 
-def parse(content: str):
-    """Return a structured event dict for an interesting line, else None."""
+def detect_trigger(content: str):
+    """Return {name, request} if this line is a !bot chat message, else None."""
     m = CHAT_RE.match(content)
-    if m:
-        msg = m.group("msg")
-        triggered = msg.strip().lower().startswith(TRIGGER)
-        return {
-            "type": "trigger" if triggered else "chat",
-            "name": m.group("name"),
-            "team": m.group("team"),
-            "team_only": m.group("kind") == "say_team",
-            "msg": msg,
-            # for a trigger, the text after !bot is the actual request
-            "request": msg.strip()[len(TRIGGER):].strip() if triggered else None,
-        }
-    m = KILL_RE.match(content)
-    if m:
-        return {
-            "type": "kill",
-            "killer": m.group("kname"),
-            "killer_team": m.group("kteam"),
-            "victim": m.group("vname"),
-            "victim_team": m.group("vteam"),
-            "weapon": m.group("weapon"),
-            "killer_is_bot": m.group("ksid") == "BOT",
-            "victim_is_bot": m.group("vsid") == "BOT",
-        }
-    m = SUICIDE_RE.match(content)
-    if m:
-        return {
-            "type": "suicide",
-            "name": m.group("name"),
-            "team": m.group("team"),
-        }
-    m = CONNECT_RE.match(content)
-    if m:
-        return {
-            "type": "connect",
-            "name": m.group("name"),
-            "action": m.group("action"),
-        }
-    m = PLAYER_TRIGGERED_RE.match(content)
-    if m and m.group("event") in INTERESTING_TRIGGERS:
-        return {
-            "type": "triggered",
-            "name": m.group("name"),
-            "team": m.group("team"),
-            "event": m.group("event"),
-            "target": m.group("tname"),
-        }
-    m = WORLD_RE.match(content)
-    if m:
-        return {
-            "type": "world",
-            "event": m.group("event"),
-            "team": m.group("wteam"),
-            "detail": m.group("detail"),
-        }
-    return None
+    if not m:
+        return None
+    msg = m.group("msg")
+    if not msg.strip().lower().startswith(TRIGGER):
+        return None
+    return {
+        "name": m.group("name"),
+        "request": msg.strip()[len(TRIGGER):].strip(),
+    }
 
 
 def loki_query(start_ns: int, end_ns: int):
@@ -176,35 +92,11 @@ def loki_query(start_ns: int, end_ns: int):
     return rows
 
 
-EMOJI = {"trigger": "🔔", "chat": "💬", "kill": "💀", "connect": "➡️", "world": "🌍"}
-
-
-def render(ev: dict) -> str:
-    t = ev["type"]
-    if t == "trigger":
-        return f'🔔 {TRIGGER} from {ev["name"]}: {ev["request"]!r}'
-    if t == "chat":
-        scope = "(team)" if ev["team_only"] else ""
-        return f'💬 {ev["name"]}{scope}: {ev["msg"]}'
-    if t == "kill":
-        b = " [bot]" if ev["killer_is_bot"] else ""
-        vb = " [bot]" if ev["victim_is_bot"] else ""
-        return f'💀 {ev["killer"]}{b} → {ev["victim"]}{vb}  ({ev["weapon"]})'
-    if t == "connect":
-        return f'➡️  {ev["name"]} {ev["action"]}'
-    if t == "world":
-        d = f' ({ev["detail"]})' if ev.get("detail") else ""
-        team = f' [{ev["team"]}]' if ev.get("team") else ""
-        return f'🌍 {ev["event"]}{team}{d}'
-    return json.dumps(ev)
-
-
 def main():
-    # start a minute back so a freshly-started server's first traffic is caught
+    """Standalone tail tool for debugging on the Pi."""
     last_ns = time.time_ns() - 60 * 1_000_000_000
     suppressed = 0
     print(f"tailing Loki {QUERY} every {POLL_SECONDS}s — Ctrl-C to stop\n", flush=True)
-    out = open(EVENTS_FILE, "a")
     while True:
         now_ns = time.time_ns()
         try:
@@ -220,12 +112,12 @@ def main():
             if is_noise(content):
                 suppressed += 1
                 continue
-            ev = parse(content)
-            if ev:
-                ev["ts_ns"] = ns
-                print(render(ev), flush=True)
-                out.write(json.dumps(ev) + "\n")
-                out.flush()
+            trigger = detect_trigger(content)
+            if trigger:
+                print(f"🔔 !bot from {trigger['name']!r}: {trigger['request']!r}", flush=True)
+            else:
+                ts = m.group("ts") if m else None
+                print(f"[{ts}] {content}" if ts else content, flush=True)
         if suppressed:
             print(f"  …{suppressed} noise lines suppressed", file=sys.stderr, flush=True)
             suppressed = 0
