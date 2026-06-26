@@ -93,7 +93,7 @@ spec:
             - name: SRCDS_MAXPLAYERS
               value: "24"
             - name: SRCDS_STARTMAP
-              value: pd_selbyen
+              value: cp_dustbowl
             - name: SRCDS_WORKSHOP_AUTHKEY
               valueFrom:
                 secretKeyRef:
