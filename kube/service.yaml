@@ -20,8 +20,11 @@ kind: Service
 metadata:
   name: tf2-rcon
   namespace: tf2
+  annotations:
+    tailscale.com/hostname: "tf2-rcon"
 spec:
-  type: ClusterIP
+  type: LoadBalancer
+  loadBalancerClass: tailscale
   selector:
     app: tf2
   ports:
