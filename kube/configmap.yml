@@ -18,5 +18,15 @@ data:
     // (the bot drops position_report anyway).
     log_verbose_enable 1
     log_verbose_interval 300
+
+    tf_bot_quota 12
+    tf_bot_quota_mode fill
+    bot_join_after_player 0
+    tf_bot_offline_practice 1
+    mp_waitingforplayers_cancel 1
   mapcycle.txt: |
     cp_dustbowl
+    cp_badlands
+    ctf_turbine
+    koth_viaduct
+    pl_badwater
