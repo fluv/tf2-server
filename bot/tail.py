@@ -44,6 +44,7 @@ NOISE_SUBSTRINGS = (
     "env_cubemap",
     "Stopped sound",
     "Compact freed",
+    "position_report",  # verbose-logging firehose: every player's pos every ~3s
 )
 
 # Source server-log grammar. Every gameplay line is prefixed
@@ -75,6 +76,15 @@ WORLD_RE = re.compile(
     r'^(?:World|Team "(?P<wteam>[^"]+)") triggered "(?P<event>[^"]+)"'
     r'(?:\s*\((?P<detail>.*)\))?'
 )
+# Player-triggered events the verbose log adds -- rivalry/teamplay/medic stats.
+PLAYER_TRIGGERED_RE = re.compile(
+    r'^"(?P<name>.+?)<\d+><(?P<sid>[^>]+)><(?P<team>[^>]*)>" triggered "(?P<event>[^"]+)"'
+    r'(?: against "(?P<tname>.+?)<\d+><[^>]+><(?P<tteam>[^>]*)>")?'
+)
+INTERESTING_TRIGGERS = {
+    "domination", "revenge", "kill assist", "medic_death",
+    "chargedeployed", "killedobject", "player_builtobject",
+}
 
 # A chat line that begins with this (after an optional leading space) is a
 # request aimed at the bot. Provider-agnostic on purpose — the brain behind it
@@ -126,6 +136,15 @@ def parse(content: str):
             "type": "connect",
             "name": m.group("name"),
             "action": m.group("action"),
+        }
+    m = PLAYER_TRIGGERED_RE.match(content)
+    if m and m.group("event") in INTERESTING_TRIGGERS:
+        return {
+            "type": "triggered",
+            "name": m.group("name"),
+            "team": m.group("team"),
+            "event": m.group("event"),
+            "target": m.group("tname"),
         }
     m = WORLD_RE.match(content)
     if m:

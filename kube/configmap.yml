@@ -10,3 +10,13 @@ data:
     sv_lan 0
     sv_region 3
     sv_password ""
+    // Logging the bot depends on -- persisted here so a restart keeps it.
+    log on
+    sv_logecho 1
+    // Verbose logging: dominations, revenges, assists, medic/uber events.
+    // Interval is high so the position_report firehose is choked at source
+    // (the bot drops position_report anyway).
+    log_verbose_enable 1
+    log_verbose_interval 300
+  mapcycle.txt: |
+    cp_dustbowl
