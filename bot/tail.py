@@ -18,7 +18,7 @@ import urllib.parse
 import urllib.request
 
 LOKI = os.environ.get("LOKI_URL", "http://10.43.231.187:3100")
-QUERY = '{namespace="tf2", app="tf2"}'
+QUERY = '{namespace="tf2", container="tf2"}'
 POLL_SECONDS = 3
 
 NOISE_SUBSTRINGS = (
