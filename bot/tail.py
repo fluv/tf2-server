@@ -52,11 +52,16 @@ NOISE_SUBSTRINGS = (
 # [U:1:xxxx] for humans, BOT for bots, Console for the server. Names can contain
 # almost anything, so each pattern anchors on the <userid><steamid><team> tail
 # and takes the name non-greedily up to it.
-LOG_PREFIX = re.compile(r"^L \d\d/\d\d/\d{4} - \d\d:\d\d:\d\d:\s*(.*?)\s*$")
+LOG_PREFIX = re.compile(
+    r"^L \d\d/\d\d/\d{4} - (?P<ts>\d\d:\d\d:\d\d):\s*(?P<content>.*?)\s*$"
+)
 
 KILL_RE = re.compile(
     r'^"(?P<kname>.+?)<\d+><(?P<ksid>[^>]+)><(?P<kteam>[^>]*)>" killed '
     r'"(?P<vname>.+?)<\d+><(?P<vsid>[^>]+)><(?P<vteam>[^>]*)>" with "(?P<weapon>[^"]+)"'
+)
+SUICIDE_RE = re.compile(
+    r'^"(?P<name>.+?)<\d+><(?P<sid>[^>]+)><(?P<team>[^>]*)>" committed suicide'
 )
 CHAT_RE = re.compile(
     r'^"(?P<name>.+?)<\d+><(?P<sid>[^>]+)><(?P<team>[^>]*)>" '
@@ -107,6 +112,13 @@ def parse(content: str):
             "weapon": m.group("weapon"),
             "killer_is_bot": m.group("ksid") == "BOT",
             "victim_is_bot": m.group("vsid") == "BOT",
+        }
+    m = SUICIDE_RE.match(content)
+    if m:
+        return {
+            "type": "suicide",
+            "name": m.group("name"),
+            "team": m.group("team"),
         }
     m = CONNECT_RE.match(content)
     if m:
@@ -185,7 +197,7 @@ def main():
         for ns, line in rows:
             last_ns = max(last_ns, ns)
             m = LOG_PREFIX.match(line)
-            content = m.group(1) if m else line
+            content = m.group("content") if m else line
             if is_noise(content):
                 suppressed += 1
                 continue

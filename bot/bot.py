@@ -119,6 +119,8 @@ def format_event(ev):
         return f'{ev["name"]}{scope}: {ev["msg"]}'
     if t == "kill":
         return f'{ev["killer"]} killed {ev["victim"]} ({ev["weapon"]})'
+    if t == "suicide":
+        return f'{ev["name"]} died by their own hand'
     if t == "connect":
         return f'{ev["name"]} {ev["action"]}'
     if t == "world":
@@ -139,19 +141,21 @@ class Bot:
         self.obs = []      # transcript lines since the last trigger
         log.info("client ready | model=%s, system=%d chars", MODEL, len(self.system))
 
-    def observe(self, ev):
+    def observe(self, ev, ts=None):
         line = format_event(ev)
         if line:
-            self.obs.append(line)
-            log.debug("absorb | %s", line)
+            stamped = f"[{ts}] {line}" if ts else line
+            self.obs.append(stamped)
+            log.debug("absorb | %s", stamped)
 
-    def respond(self, asker, request):
+    def respond(self, asker, request, ts=None):
         pending = len(self.obs)
         preamble = ""
         if self.obs:
             preamble = "Server activity since you last spoke:\n" + "\n".join(self.obs) + "\n\n"
         self.obs = []
-        user = f"{preamble}{asker} says: {TRIGGER} {request}"
+        when = f"[{ts}] " if ts else ""
+        user = f"{preamble}{when}{asker} says: {TRIGGER} {request}"
         self.history.append({"role": "user", "content": user})
         log.info("trigger | %s: %r  (history=%d turns, +%d obs absorbed)",
                  asker, request, len(self.history), pending)
@@ -216,16 +220,17 @@ def main():
         for ns, line in rows:
             last_ns = max(last_ns, ns)
             m = LOG_PREFIX.match(line)
-            content = m.group(1) if m else line
+            ts = m.group("ts") if m else None
+            content = m.group("content") if m else line
             if is_noise(content):
                 continue
             ev = parse(content)
             if not ev:
                 continue
             if ev["type"] == "trigger":
-                bot.respond(ev["name"], ev["request"] or "")
+                bot.respond(ev["name"], ev["request"] or "", ts)
             else:
-                bot.observe(ev)
+                bot.observe(ev, ts)
         time.sleep(POLL_SECONDS)
 
 
