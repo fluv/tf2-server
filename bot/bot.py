@@ -29,7 +29,7 @@ from rcon import run_rcon
 
 POLL_SECONDS = 1
 MODEL = os.environ.get("ANTHROPIC_MODEL", "deepseek-v4-flash")
-MAX_TOKENS = 512
+MAX_TOKENS = 1024
 MAX_TOOL_HOPS = 5  # safety cap on the tool loop per trigger
 
 logging.basicConfig(
@@ -132,6 +132,7 @@ class Bot:
         self.client = anthropic.Anthropic(
             base_url=os.environ.get("ANTHROPIC_BASE_URL"),
             auth_token=os.environ["ANTHROPIC_AUTH_TOKEN"],
+            timeout=60,  # cap the SDK default of 600s so a slow call can't jam the bot
         )
         self.system = load_system()
         self.history = []  # accumulating [{role, content}] conversation
@@ -162,6 +163,10 @@ class Bot:
                 resp = self.client.messages.create(
                     model=MODEL, max_tokens=MAX_TOKENS,
                     system=self.system, messages=self.history, tools=[RCON_TOOL],
+                    # Force a tool call on the first hop -- deepseek-v4-flash will
+                    # otherwise answer in prose and never call `say`, so nothing
+                    # reaches the game. After hop 1, let it stop naturally.
+                    tool_choice={"type": "any"} if hop == 1 else {"type": "auto"},
                 )
             except Exception as e:
                 log.error("model call failed: %s", e)
