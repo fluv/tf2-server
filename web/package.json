@@ -16,6 +16,7 @@
     "pino-dev": "^4.0.3"
   },
   "scripts": {
+    "start": "node server.js",
     "dev": "node --watch --watch-path=./views server.js | pino-dev"
   }
 }
