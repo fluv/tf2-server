@@ -1,0 +1,45 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tf2-web
+  namespace: tf2
+  labels:
+    app: tf2-web
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tf2-web
+  template:
+    metadata:
+      labels:
+        app: tf2-web
+    spec:
+      containers:
+        - name: tf2-web
+          image: ghcr.io/fluv/tf2-web:latest
+          ports:
+            - name: http
+              containerPort: 3000
+          securityContext:
+            seccompProfile:
+              type: RuntimeDefault
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              memory: 256Mi
+      terminationGracePeriodSeconds: 10
