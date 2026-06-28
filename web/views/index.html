@@ -1,0 +1,38 @@
+{% extends "govuk/template.njk" %}
+{% from "govuk/components/generic-header/macro.njk" import govukGenericHeader %}
+
+{% block head %}
+  <link rel="stylesheet" href="/govuk/govuk-frontend.min.css">
+{% endblock %}
+
+{% block content %}
+  <h1 class="govuk-heading-xl">Default page template</h1>
+{% endblock %}
+
+
+{% set logoContent %}
+<svg width="28" height="30" viewBox="0 0 28 30" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+  <circle cx="13.5549" cy="4.21349" r="4.21349"/>
+  <circle cx="13.5549" cy="25.7865" r="4.21349"/>
+  <circle cx="22.8963" cy="9.6068" r="4.21349"/>
+  <circle cx="4.2135" cy="20.3932" r="4.21349"/>
+  <circle cx="22.8963" cy="20.3932" r="4.21349"/>
+  <circle cx="4.21351" cy="9.60674" r="4.21349"/>
+</svg> Service name
+{% endset %}
+
+{% block govukHeader %}
+{{ govukGenericHeader({
+  url: "#",
+  logoHtml: logoContent
+}) }}
+{% endblock %}
+
+{% block bodyEnd %}
+  {# Run JavaScript at end of the <body>, to avoid blocking the initial render. #}
+  <script type="module" src="/govuk/govuk-frontend.min.js"></script>
+  <script type="module">
+    import { initAll } from '/govuk/govuk-frontend.min.js'
+    initAll()
+  </script>
+{% endblock %}

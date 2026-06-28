@@ -1,0 +1,21 @@
+{
+  "name": "tf2-web",
+  "version": "1.0.0",
+  "main": "server.js",
+  "repository": "https://github.com/fluv/tf2-server.git",
+  "license": "MIT-0",
+  "private": true,
+  "dependencies": {
+    "express": "^5.2.1",
+    "govuk-frontend": "^6.3.0",
+    "nunjucks": "^3.2.4",
+    "pino-http": "^11.0.0",
+    "sass": "^1.101.0"
+  },
+  "devDependencies": {
+    "pino-dev": "^4.0.3"
+  },
+  "scripts": {
+    "dev": "node --watch --watch-path=./views server.js | pino-dev"
+  }
+}
