@@ -1,18 +1,14 @@
 ---
-# Stop the cluster descheduler evicting the bot every ~5 minutes, which wipes
-# its in-process conversation history (the whole point of the persistent-context
-# design). The descheduler evicts via the eviction API, which always honours
-# PodDisruptionBudgets -- minAvailable: 1 on the single replica makes the pod
-# un-evictable. (The tf2 server survives the descheduler only incidentally, via
-# its emptyDir local storage + the descheduler's evictLocalStoragePods: false
-# default; the bot has no local storage, so it needs the PDB.)
+# The tf2 namespace is excluded from the descheduler profile in fluv/kube, so
+# the descheduler will not evict this pod. minAvailable: 0 allows the cluster
+# autoscaler to drain the node if it needs to scale down.
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
   name: tf2-bot
   namespace: tf2
 spec:
-  minAvailable: 1
+  minAvailable: 0
   selector:
     matchLabels:
       app: tf2-bot
