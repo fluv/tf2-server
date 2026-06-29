@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """tf2-bot supervisor — persistent context.
 
-Runs continuously, polling the server log out of Loki. Noise is stripped; every
-remaining line is appended verbatim to a running transcript with NO model call --
-the bot is "in the room", absorbing silently. Only when a player types `!bot ...`
-does it call the model, with the full conversation history (every prior turn) plus
-the raw transcript since the last turn plus the request, and rcon exposed as a
-tool. The model replies in-game by calling rcon.
+Runs continuously, receiving server log lines over UDP (Source Engine logaddress_add
+mechanism). Noise is stripped; every remaining line is appended verbatim to a running
+transcript with NO model call -- the bot is "in the room", absorbing silently. Only
+when a player types `!bot ...` does it call the model, with the full conversation
+history (every prior turn) plus the raw transcript since the last turn plus the
+request, and rcon exposed as a tool. The model replies in-game by calling rcon.
 
 Raw logs beat bespoke parsers: the model reads structured log lines fine and won't
 silently miss event types that a hand-rolled regex didn't cover.
@@ -27,10 +27,10 @@ import time
 
 import anthropic
 
-from tail import LOG_PREFIX, TRIGGER, is_noise, detect_trigger, loki_query
+from tail import LOG_PREFIX, TRIGGER, is_noise, detect_trigger, LogReceiver
 from rcon import run_rcon
 
-POLL_SECONDS = 1
+POLL_SECONDS = 0.1
 MODEL = os.environ.get("ANTHROPIC_MODEL", "deepseek-v4-flash")
 MAX_TOKENS = 1024
 MAX_TOOL_HOPS = 5  # safety cap on the tool loop per trigger
@@ -205,19 +205,12 @@ class Bot:
 
 def main():
     bot = Bot()
-    last_ns = time.time_ns()
-    log.info("up (persistent context) — absorbing, waiting for %s", TRIGGER)
+    receiver = LogReceiver()
+    log.info("up (persistent context) — absorbing on UDP :%d, waiting for %s",
+             receiver.port, TRIGGER)
     while True:
-        now = time.time_ns()
-        try:
-            rows = loki_query(last_ns + 1, now)
-        except Exception as e:
-            log.error("loki query failed: %s", e)
-            time.sleep(POLL_SECONDS)
-            continue
-        for ns, line in rows:
-            last_ns = max(last_ns, ns)
-            m = LOG_PREFIX.match(line)
+        for line in receiver.recv_available():
+            m = LOG_PREFIX.search(line)
             ts = m.group("ts") if m else None
             content = m.group("content") if m else line
             if is_noise(content):
