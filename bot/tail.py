@@ -127,24 +127,21 @@ def main():
             ready, _, _ = select.select([receiver.sock], [], [], 1.0)
             if not ready:
                 continue
-            data, _ = receiver.sock.recvfrom(65535)
-            text = _parse_packet(data)
-            if not text:
-                continue
-            m = LOG_PREFIX.search(text)
-            content = m.group("content") if m else text
-            if is_noise(content):
-                suppressed += 1
-                continue
-            if suppressed:
-                print(f"  …{suppressed} noise lines suppressed", file=sys.stderr, flush=True)
-                suppressed = 0
-            trigger = detect_trigger(content)
-            if trigger:
-                print(f"[!bot] {trigger['name']!r}: {trigger['request']!r}", flush=True)
-            else:
-                ts = m.group("ts") if m else None
-                print(f"[{ts}] {content}" if ts else content, flush=True)
+            for text in receiver.recv_available():
+                m = LOG_PREFIX.search(text)
+                content = m.group("content") if m else text
+                if is_noise(content):
+                    suppressed += 1
+                    continue
+                if suppressed:
+                    print(f"  …{suppressed} noise lines suppressed", file=sys.stderr, flush=True)
+                    suppressed = 0
+                trigger = detect_trigger(content)
+                if trigger:
+                    print(f"[!bot] {trigger['name']!r}: {trigger['request']!r}", flush=True)
+                else:
+                    ts = m.group("ts") if m else None
+                    print(f"[{ts}] {content}" if ts else content, flush=True)
     except KeyboardInterrupt:
         if suppressed:
             print(f"\n  …{suppressed} noise lines suppressed", file=sys.stderr)
