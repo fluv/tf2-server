@@ -24,7 +24,7 @@
   <p class="govuk-body">
     {{ govukButton({
       text: "Connect to the TF2 server",
-      href: "steam://connect/{{hostname}}:{{port}}",
+      href: "steam://connect/" + hostname + ":" + port,
       isStartButton: true
     }) }}
     {% from "govuk/components/details/macro.njk" import govukDetails %}
