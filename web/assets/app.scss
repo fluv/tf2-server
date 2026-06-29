@@ -18,3 +18,12 @@
 
 @use "pkg:govuk-frontend/dist/govuk/components/button";
 @use "pkg:govuk-frontend/dist/govuk/components/details";
+
+.govuk-button {
+  background-color: govuk-colour('teal');
+  box-shadow: 0 2px 0 govuk-colour('teal', $variant: 'shade-50');
+
+  &:hover {
+    background-color: govuk-colour('teal', $variant: 'shade-25');
+  }
+}
