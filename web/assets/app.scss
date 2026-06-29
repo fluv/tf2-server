@@ -20,6 +20,21 @@
 @use "pkg:govuk-frontend/dist/govuk/components/button";
 @use "pkg:govuk-frontend/dist/govuk/components/details";
 
+
+$app-code-color: #d13118;
+li code,
+caption code,
+td code,
+p code {
+  padding: 1px 3px;
+  color: $app-code-color;
+  background-color: govuk-colour("black", $variant: "tint-95");
+  @include govuk-font-size($size: 16);
+  @include govuk-media-query($from: tablet) {
+    padding: 2px 4px;
+  }
+}
+
 .govuk-button {
   background-color: govuk-colour('teal');
   box-shadow: 0 2px 0 govuk-colour('teal', $variant: 'shade-50');
