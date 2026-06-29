@@ -14,7 +14,8 @@ nunjucks.configure([
     express: app
 })
 
-app.use('/govuk', express.static('node_modules/govuk-frontend/dist/govuk'))
+app.use('/govuk',express.static('node_modules/govuk-frontend/dist/govuk'))
+app.use('/assets',express.static('assets'))
 
 const port = process.env.PORT || 3000
 app.listen(port, () => pino.info(`Listening on ${port}`))

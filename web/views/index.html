@@ -1,38 +1,46 @@
-{% extends "govuk/template.njk" %}
-{% from "govuk/components/generic-header/macro.njk" import govukGenericHeader %}
+{% extends "template.html" %}
+{% from "govuk/components/button/macro.njk" import govukButton %}
 
-{% block head %}
-  <link rel="stylesheet" href="/govuk/govuk-frontend.min.css">
-{% endblock %}
 
 {% block content %}
-  <h1 class="govuk-heading-xl">Default page template</h1>
-{% endblock %}
+  <h1 class="govuk-heading-xl">Play Team Fortress 2</h1>
 
+  <p class="govuk-body-l">
+    We run a <a href="https://www.teamfortress.com/">Team Fortress 2</a>
+    server which you should play on.
+  </p>
 
-{% set logoContent %}
-<svg width="28" height="30" viewBox="0 0 28 30" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-  <circle cx="13.5549" cy="4.21349" r="4.21349"/>
-  <circle cx="13.5549" cy="25.7865" r="4.21349"/>
-  <circle cx="22.8963" cy="9.6068" r="4.21349"/>
-  <circle cx="4.2135" cy="20.3932" r="4.21349"/>
-  <circle cx="22.8963" cy="20.3932" r="4.21349"/>
-  <circle cx="4.21351" cy="9.60674" r="4.21349"/>
-</svg> Service name
-{% endset %}
+  <p class="govuk-body">
+    Before you can play, you should:
+    <ul class="govuk-list govuk-list--bullet">
+      <li>
+        download and install <a class="govuk-link" href="https://store.steampowered.com/about/">Steam</a> on Windows or Linux
+      </li>
+      <li>
+        <a class="govuk-link" href="steam://install/440">install Team Fortress 2</a>
+      </li>
+    </ul>
+  </p>
+  <p class="govuk-body">
+    {{ govukButton({
+      text: "Connect to the TF2 server",
+      href: "steam://connect/{{hostname}}:{{port}}",
+      isStartButton: true
+    }) }}
+    {% from "govuk/components/details/macro.njk" import govukDetails %}
 
-{% block govukHeader %}
-{{ govukGenericHeader({
-  url: "#",
-  logoHtml: logoContent
-}) }}
-{% endblock %}
+    {% call govukDetails({
+      summaryText: "Connect via developer console"
+    }) %}
+      To connect to the TF2 server manually,
+      <ul class="govuk-list govuk-list--bullet">
+        <li>launch Team Fortress 2</li>
+        <li>go to Settings &rarr; Keyboard; &rarr; Advanced&ellip;</li>
+        <li>Check &ldquo;Enable developer console&rdquo; and save</li>
+        <li>press the <kbd>`</kbd> or <kbd>~</kbd> key below <kbd>Esc</kbd></li>
+        <li>type <code>connect {{hostname}}:{{port}}</code> and press <kbd>Enter</kbd>
+      </ul>
+    {% endcall %}
+  </p>
 
-{% block bodyEnd %}
-  {# Run JavaScript at end of the <body>, to avoid blocking the initial render. #}
-  <script type="module" src="/govuk/govuk-frontend.min.js"></script>
-  <script type="module">
-    import { initAll } from '/govuk/govuk-frontend.min.js'
-    initAll()
-  </script>
 {% endblock %}

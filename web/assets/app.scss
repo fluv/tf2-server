@@ -1,0 +1,18 @@
+
+@use "pkg:govuk-frontend/dist/govuk/base" as * with (
+  $govuk-font-family: (
+    "Helvetica Neue", Helvetica, Arial, sans-serif
+  ),
+  $govuk-functional-colours: (
+    brand: rgb(132, 59, 104)
+  )
+);
+@use "pkg:govuk-frontend/dist/govuk/core";
+@use "pkg:govuk-frontend/dist/govuk/objects";
+
+@use "pkg:govuk-frontend/dist/govuk/components/generic-header";
+@use "pkg:govuk-frontend/dist/govuk/components/footer";
+@use "pkg:govuk-frontend/dist/govuk/components/skip-link";
+
+@use "pkg:govuk-frontend/dist/govuk/components/button";
+@use "pkg:govuk-frontend/dist/govuk/components/details";

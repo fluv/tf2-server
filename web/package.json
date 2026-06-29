@@ -9,14 +9,17 @@
     "express": "^5.2.1",
     "govuk-frontend": "^6.3.0",
     "nunjucks": "^3.2.4",
-    "pino-http": "^11.0.0",
-    "sass": "^1.101.0"
+    "pino-http": "^11.0.0"
   },
   "devDependencies": {
-    "pino-dev": "^4.0.3"
+    "pino-dev": "^4.0.3",
+    "sass": "^1.101.0"
   },
   "scripts": {
     "start": "node server.js",
-    "dev": "node --watch --watch-path=./views server.js | pino-dev"
+    "prepare": "yarn build:css",
+    "watch": "node --watch --watch-path=./views server.js | pino-dev",
+    "build:css": "sass assets/app.scss assets/app.css --pkg-importer=node",
+    "watch:css": "sass --watch assets/app.scss assets/app.css --pkg-importer=node"
   }
 }
