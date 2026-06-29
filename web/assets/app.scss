@@ -1,6 +1,7 @@
 
 @use "pkg:govuk-frontend/dist/govuk/base" as * with (
   $govuk-font-family: (
+    "Nunito Sans",
     "Helvetica Neue", Helvetica, Arial, sans-serif
   ),
   $govuk-functional-colours: (
