@@ -22,6 +22,7 @@ adds the firehose -- every absorbed line and the full context sent to the model.
 """
 import logging
 import os
+import select
 import sys
 import time
 
@@ -29,8 +30,6 @@ import anthropic
 
 from tail import LOG_PREFIX, TRIGGER, is_noise, detect_trigger, LogReceiver
 from rcon import run_rcon
-
-POLL_SECONDS = 0.1
 MODEL = os.environ.get("ANTHROPIC_MODEL", "deepseek-v4-flash")
 MAX_TOKENS = 1024
 MAX_TOOL_HOPS = 5  # safety cap on the tool loop per trigger
@@ -209,6 +208,7 @@ def main():
     log.info("up (persistent context) — absorbing on UDP :%d, waiting for %s",
              receiver.port, TRIGGER)
     while True:
+        select.select([receiver.sock], [], [], 1.0)
         for line in receiver.recv_available():
             m = LOG_PREFIX.search(line)
             ts = m.group("ts") if m else None
@@ -220,7 +220,6 @@ def main():
                 bot.respond(trigger["name"], trigger["request"], ts)
             else:
                 bot.observe(content, ts)
-        time.sleep(POLL_SECONDS)
 
 
 if __name__ == "__main__":
