@@ -8,7 +8,9 @@
   )
 );
 @use "pkg:govuk-frontend/dist/govuk/core";
-@use "pkg:govuk-frontend/dist/govuk/objects";
+@use "pkg:govuk-frontend/dist/govuk/objects/template";
+@use "pkg:govuk-frontend/dist/govuk/objects/width-container";
+@use "pkg:govuk-frontend/dist/govuk/objects/main-wrapper";
 
 @use "pkg:govuk-frontend/dist/govuk/components/generic-header";
 @use "pkg:govuk-frontend/dist/govuk/components/footer";
