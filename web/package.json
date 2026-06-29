@@ -17,7 +17,6 @@
   },
   "scripts": {
     "start": "node server.js",
-    "prepare": "yarn build:css",
     "watch": "node --watch --watch-path=./views server.js | pino-dev",
     "build:css": "sass assets/app.scss assets/app.css --pkg-importer=node",
     "watch:css": "sass --watch assets/app.scss assets/app.css --pkg-importer=node"
