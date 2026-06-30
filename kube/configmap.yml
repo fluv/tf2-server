@@ -15,7 +15,10 @@ data:
     sv_logecho 1
     // Ship logs to the bot over UDP. Stable via the ClusterIP service so bot
     // pod restarts are transparent (kube-proxy reroutes to the new pod).
-    logaddress_add tf2-bot.tf2.svc.cluster.local:27115
+    // Literal IP, not the DNS name: srcds's logaddress_add mangles the port
+    // when given a hostname (resolves the address fine but truncates the
+    // port to a single digit). IP is pinned in kube/service.yaml.
+    logaddress_add 10.43.208.74:27115
     // Verbose logging: dominations, revenges, assists, medic/uber events.
     // Interval is high so the position_report firehose is choked at source
     // (the bot drops position_report anyway).
