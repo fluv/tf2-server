@@ -11,7 +11,9 @@ nunjucks.configure([
     'views'
 ], {
     autoescape: true,
-    express: app
+    express: app,
+    trimBlocks: true,
+    lstripBlocks: true
 })
 
 app.use('/govuk',express.static('node_modules/govuk-frontend/dist/govuk'))
