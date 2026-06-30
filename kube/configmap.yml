@@ -13,6 +13,9 @@ data:
     // Logging the bot depends on -- persisted here so a restart keeps it.
     log on
     sv_logecho 1
+    // Ship logs to the bot over UDP. Stable via the ClusterIP service so bot
+    // pod restarts are transparent (kube-proxy reroutes to the new pod).
+    logaddress_add tf2-bot.tf2.svc.cluster.local:27115
     // Verbose logging: dominations, revenges, assists, medic/uber events.
     // Interval is high so the position_report firehose is choked at source
     // (the bot drops position_report anyway).

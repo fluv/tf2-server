@@ -1,6 +1,6 @@
 ---
-# tf2-bot — headless Claude Code (DeepSeek-backed) heckler. Reads the match via
-# Loki, talks back via rcon. Needs NO k8s API access: Loki is HTTP, rcon is TCP.
+# tf2-bot — headless DeepSeek-backed heckler. Receives server logs over UDP via
+# Source Engine logaddress_add, talks back via rcon. Needs NO k8s API access.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -45,6 +45,10 @@ spec:
               value: /config/mechanical.txt
             - name: BOT_CHARACTER_FILE
               value: /config/character.txt
+          ports:
+            - containerPort: 27115
+              protocol: UDP
+              name: log-udp
           volumeMounts:
             - name: prompt
               mountPath: /config
