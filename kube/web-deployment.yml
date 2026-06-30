@@ -39,6 +39,13 @@ spec:
           env:
             - name: TF2_PORT
               value: "30015"
+            - name: MAPCYCLE_PATH
+              value: /etc/tf2/mapcycle.txt
+          volumeMounts:
+            - name: server-cfg
+              mountPath: /etc/tf2/mapcycle.txt
+              subPath: mapcycle.txt
+              readOnly: true
           resources:
             requests:
               cpu: 50m
@@ -46,3 +53,10 @@ spec:
             limits:
               memory: 256Mi
       terminationGracePeriodSeconds: 10
+      volumes:
+        - name: server-cfg
+          configMap:
+            name: tf2-server-cfg
+            items:
+              - key: mapcycle.txt
+                path: mapcycle.txt
