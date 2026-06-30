@@ -63,3 +63,7 @@ $tf2-orange: #b35215;
   width: inherit;
   column-width: 300px;
 }
+
+li:has(> em) {
+  list-style-type: '➤ ';
+}

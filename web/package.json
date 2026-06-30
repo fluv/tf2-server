@@ -6,10 +6,13 @@
   "license": "MIT-0",
   "private": true,
   "dependencies": {
+    "@callowayisweird/source-query": "^0.1.0",
+    "binary-parser": "^2.3.0",
     "express": "^5.2.1",
     "govuk-frontend": "^6.3.0",
     "nunjucks": "^3.2.4",
-    "pino-http": "^11.0.0"
+    "pino-http": "^11.0.0",
+    "srcds-a2s": "^1.0.1"
   },
   "devDependencies": {
     "pino-dev": "^4.0.3",
