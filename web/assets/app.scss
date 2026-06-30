@@ -1,10 +1,11 @@
-
 @use "pkg:govuk-frontend/dist/govuk/base" as * with (
   $govuk-font-family: (
+    "Verdana",
     "Nunito Sans",
     "Helvetica Neue", Helvetica, Arial, sans-serif
   ),
   $govuk-functional-colours: (
+    body-background: #f5e7de,
     brand: rgb(132, 59, 104)
   )
 );
@@ -20,6 +21,7 @@
 @use "pkg:govuk-frontend/dist/govuk/components/button";
 @use "pkg:govuk-frontend/dist/govuk/components/details";
 
+@use "sass:color";
 
 $app-code-color: #d13118;
 li code,
@@ -35,11 +37,29 @@ p code {
   }
 }
 
+$tf2-orange: #b35215;
 .govuk-button {
-  background-color: govuk-colour('teal');
-  box-shadow: 0 2px 0 govuk-colour('teal', $variant: 'shade-50');
+  background-color: $tf2-orange;
+  box-shadow: 0 2px 0 color.scale($tf2-orange, $lightness: 50%);
 
   &:hover {
-    background-color: govuk-colour('teal', $variant: 'shade-25');
+    background-color: color.scale($tf2-orange, $lightness: 25%);
   }
+}
+
+.tf2-chat, .tf2-console {
+  font-family: 'Verdana', 'sans-serif';
+  font-weight: bold;
+  color: #fbeccb;
+  font-size: 13px;
+  text-shadow: 1px 1px 0 #000;
+  background-color: #5f5954;
+  list-style-type: none;
+  li { margin: 0.2em; }
+}
+.tf2-chat {
+  outline: 1em solid #817b74;
+  padding: 0.5em 0.5em;
+  width: inherit;
+  column-width: 300px;
 }

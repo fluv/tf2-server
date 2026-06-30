@@ -21,7 +21,6 @@
       </li>
     </ul>
   </p>
-  <p class="govuk-body">
     {{ govukButton({
       text: "Connect to the TF2 server",
       href: "steam://connect/" + hostname + ":" + port,
@@ -35,12 +34,55 @@
       To connect to the TF2 server manually,
       <ul class="govuk-list govuk-list--bullet">
         <li>launch Team Fortress 2</li>
-        <li>go to Settings &rarr; Keyboard; &rarr; Advanced&hellip;</li>
+        <li>go to Settings &rarr; Keyboard &rarr; Advanced&hellip;</li>
         <li>Check &ldquo;Enable developer console&rdquo; and save</li>
         <li>press the <kbd>`</kbd> or <kbd>~</kbd> key below <kbd>Esc</kbd></li>
-        <li>type <code>connect {{hostname}}:{{port}}</code> and press <kbd>Enter</kbd></li>
+        <li>type <code class="tf2-console">connect {{hostname}}:{{port}}</code> and press <kbd>Enter</kbd></li>
       </ul>
     {% endcall %}
+
+  {% if maps %}
+  <h2 class="govuk-heading-m">Server configuration</h2>
+
+  <p class="govuk-body">The server rotates through the following maps in sequence:</p>
+  <ol class="govuk-list govuk-list--bullet">
+  {% for map in maps %}
+  {% if map === currentMap %}
+  <li><em>{{ map }}</em></li>
+  {% else %}
+  <li>{{ map }}</li>
+  {% endif %}
+  {% endfor %}
+  </ol>
+
+  {% endif %}
+
+  <h2 class="govuk-heading-m">Caretaker bot</h2>
+
+  <p class="govuk-body">
+    Type <code>!bot</code> into chat to invoke a language model with access to the
+    <a href="https://wiki.teamfortress.com/wiki/List_of_useful_console_commands" class="govuk-link">server console</a>
+    and the current game in context. It can see what you say in chat, but won&rsquo;t process it
+    until a message is prefixed with <code>!bot</code>
+  <p>
+  <p class="govuk-body">
+    You can use this to modify the server configuration as needed. For example:
+    <ul class="govuk-list govuk-list--bullet tf2-chat">
+      <li>!bot add six bots</li>
+      <li>!bot reset the round</li>
+      <li>!bot send us to foundry</li>
+      <li>!bot turn the gravity down</li>
+      <li>!bot how am i playing?</li>
+      <li>!bot was i playing better as Scout</li>
+      <li>!bot adjust the team balance to make it fairer</li>
+      <li>!bot set host_timescale 2</li>
+      <li>!bot turn off random crits</li>
+      <li>!bot ban gordon for 15 minutes</li>
+      <li>!bot turn the server off</li>
+      <li>!bot see above</li>
+      <li>!bot which weapon am i using the most?</li>
+      <li>!bot make all the bots scout, force them to melee and constantly jump</li>
+    </ul>
   </p>
 
 {% endblock %}
