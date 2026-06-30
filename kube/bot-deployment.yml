@@ -18,8 +18,6 @@ spec:
       labels:
         app: tf2-bot
     spec:
-      nodeSelector:
-        kubernetes.io/arch: amd64  # claude-code/node, match the server
       containers:
         - name: tf2-bot
           image: ghcr.io/fluv/tf2-bot:latest  # tag kept in sync with bot-image.yml
