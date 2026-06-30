@@ -53,6 +53,11 @@ metadata:
   namespace: tf2
 spec:
   type: ClusterIP
+  # Pinned: server.cfg's logaddress_add targets this IP literally (see
+  # kube/configmap.yml) because srcds mangles the port when given a
+  # hostname. Pinning means the Service can be recreated without breaking
+  # that reference.
+  clusterIP: 10.43.208.74
   selector:
     app: tf2-bot
   ports:
