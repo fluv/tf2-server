@@ -1,9 +1,11 @@
 const app = require('..')
+
+const dgram = require('dgram');
+const dns = require('dns').promises
 const fs = require('fs/promises')
 
 app.use(require('./health.js'))
 
-const dgram = require('dgram');
 
 const getMapName = (host, port) => {
   return new Promise((resolve, reject) => {
@@ -30,11 +32,21 @@ const getMapCycle = async () => {
     return maps.trim().split('\n')
 }
 
+let cache = {expiry: 0, ip: null}
+const getServerIp = async (host) => {
+  if (Date.now() < cache.expiry) return cache.ip
+  const addrs = await dns.resolve4(host)
+  const ip = addrs.pop()
+  cache = { ip, expiry: Date.now() * 60 * 1000 }
+  return ip
+}
+
 app.get('/', async (req, res) => {
     const hostname = process.env.TF2_HOST || 'tf2.k3s.fluv.net'
     const port = process.env.TF2_PORT || 30015
     res.render('index.html', {
         hostname,
+        ip: await getServerIp(hostname),
         port,
         currentMap: await getMapName(hostname, port),
         maps: await getMapCycle()
