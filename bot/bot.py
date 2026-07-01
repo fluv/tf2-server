@@ -6,15 +6,20 @@ mechanism). Noise is stripped; every remaining line is appended verbatim to a ru
 transcript with NO model call -- the bot is "in the room", absorbing silently. Only
 when a player types `!bot ...` does it call the model, with the full conversation
 history (every prior turn) plus the raw transcript since the last turn plus the
-request, and rcon exposed as a tool. The model replies in-game by calling rcon.
+request. The model's plain-text reply is said to players automatically; rcon
+is exposed as a tool only for actual server admin commands.
 
 Raw logs beat bespoke parsers: the model reads structured log lines fine and won't
 silently miss event types that a hand-rolled regex didn't cover.
 
 The conversation lives in this process, so context accumulates across triggers
 like a chat session. The model API is stateless; "memory" is just the growing
-message list we resend on each call. rcon runs here in the tool loop, so every
-command the model issues is logged.
+message list we resend on each call. Any plain-text reply is said to players
+automatically -- the model doesn't need to call a tool to be heard. The rcon
+tool is reserved for actual server admin commands (map changes, adding bots,
+restarts); those are executed here in the tool loop, so every command the
+model issues is logged, and the raw invocation is echoed to chat so players
+can see the bot actually did something.
 
 Logging: timestamped via the stdlib logger. LOG_LEVEL=INFO gives per-interaction
 detail (trigger, model timing + token usage, bot replies, rcon); LOG_LEVEL=DEBUG
@@ -56,23 +61,21 @@ types {TRIGGER} in chat. You have been silently watching the server: chat, kills
 and round events appear in the running conversation, so you already know
 what has been said and who is doing well.
 
-You have two separate channels, keep them apart:
-- Plain text is your PRIVATE reasoning. Players never see it; it goes only
-  to the logs. Use it to think -- weigh what is happening and decide.
-- The rcon `say` command is your ONLY voice to players. Anything you want
-  them to hear must be a say call.
+Your plain text reply IS your voice -- it is said to players automatically,
+verbatim, so there's no separate step to speak it. Keep it to one line,
+<=120 chars, no markdown. Don't narrate what you're about to say or restate
+it -- just say the thing once.
 
-So: reason in plain text, then speak via rcon say "<one line, <=120 chars>".
-Never put a spoken line in plain text -- it will not be heard.
-
-When a player clearly asks, you can also run server commands: add bots with
-tf_bot_add, restart with mp_restartgame, and so on. Use full map names like
-cp_dustbowl or koth_harvest_final. To change the map, prefer nextlevel <map>
-over changelevel <map>: changelevel switches instantly, so nobody sees your
-reply or gets to finish the round, while nextlevel queues the map and the
-server rolls to it at the end of the current round. Say your line first so
-people know it is coming. Only use changelevel if someone wants the map
-changed right now.
+The rcon tool is separate: it's for actual server admin commands, not talking.
+When a player clearly asks, run server commands: add bots with tf_bot_add,
+restart with mp_restartgame, and so on. Use full map names like cp_dustbowl
+or koth_harvest_final. To change the map, prefer nextlevel <map> over
+changelevel <map>: changelevel switches instantly, so nobody sees your reply
+or gets to finish the round, while nextlevel queues the map and the server
+rolls to it at the end of the current round. Put your reply and the rcon
+call in the same turn -- the reply is said before the command runs, so
+people know the map change is coming. Only use changelevel if someone wants
+the map changed right now.
 
 CRITICAL: you cannot observe whether a command worked -- rcon gives you no
 useful feedback, and the result will not appear in the conversation. Issue
@@ -92,23 +95,35 @@ answer with what you do know."""
 RCON_TOOL = {
     "name": "rcon",
     "description": (
-        "Run a Source RCON command on the TF2 server. Talk to players with "
-        'say "your message" (under 120 chars) -- this is the only way they hear '
-        "you. To change maps, prefer nextlevel <map> (queues it for the end of "
-        "the round so your line lands first); use changelevel <map> only to "
-        "switch the map instantly. Other commands: tf_bot_add <n>, mp_restartgame 1."
+        "Run a Source server admin command -- NOT for talking to players, your "
+        "plain text reply already handles that. To change maps, prefer "
+        "nextlevel <map> (queues it for the end of the round so your reply "
+        "lands first); use changelevel <map> only to switch the map instantly. "
+        "Other commands: tf_bot_add <n>, mp_restartgame 1."
     ),
     "input_schema": {
         "type": "object",
         "properties": {
             "command": {
                 "type": "string",
-                "description": 'the rcon command, e.g. say "dustbowl it is, rolling next round"',
+                "description": "the rcon command, e.g. nextlevel cp_dustbowl",
             }
         },
         "required": ["command"],
     },
 }
+
+SAY_MAX = 120
+
+
+def _say(text):
+    """Sanitize and broadcast one line to server chat. Strips embedded quotes so
+    model-generated text can't break out of the rcon `say "..."` argument and
+    inject further console commands."""
+    line = " ".join(text.split()).replace('"', "'")[:SAY_MAX]
+    if not line:
+        return
+    run_rcon(f'say "{line}"')
 
 
 def _load_prompt(env_var, default):
@@ -164,10 +179,7 @@ class Bot:
                 resp = self.client.messages.create(
                     model=MODEL, max_tokens=MAX_TOKENS,
                     system=self.system, messages=self.history, tools=[RCON_TOOL],
-                    # Force a tool call on the first hop -- deepseek-v4-flash will
-                    # otherwise answer in prose and never call `say`, so nothing
-                    # reaches the game. After hop 1, let it stop naturally.
-                    tool_choice={"type": "any"} if hop == 1 else {"type": "auto"},
+                    tool_choice={"type": "auto"},
                 )
             except Exception as e:
                 log.error("model call failed: %s", e)
@@ -178,23 +190,43 @@ class Bot:
             log.info("model | hop %d  stop=%s  %s  (%.1fs)",
                      hop, resp.stop_reason, toks, time.monotonic() - h0)
             self.history.append({"role": "assistant", "content": resp.content})
-            for block in resp.content:
-                # plain text is the model's private reasoning -- log it, never
-                # send it to players. Only `say` (below) reaches the game.
-                if block.type == "text" and block.text.strip():
-                    log.info("reasoning | %s", block.text.strip())
+            # plain text is the reply -- said to players automatically, once,
+            # exactly as written. No separate reasoning pass, no duplicate say.
+            text = " ".join(
+                block.text.strip() for block in resp.content
+                if block.type == "text" and block.text.strip()
+            )
+            if text:
+                log.info("said | %s", text)
+                try:
+                    _say(text)
+                except Exception as e:
+                    log.error("say failed: %s", e)
             tool_uses = [b for b in resp.content if b.type == "tool_use"]
             if not tool_uses:
                 break
             results = []
             for tu in tool_uses:
                 cmd = tu.input.get("command", "")
-                try:
-                    out = run_rcon(cmd)
-                    log.info("rcon | %s  →  %s", cmd, out or "(sent)")
-                except Exception as e:
-                    out = f"rcon error: {e}"
-                    log.error("rcon | %s  →  %s", cmd, out)
+                if cmd.strip().lower().startswith("say"):
+                    # the reply text above already said it -- executing this too
+                    # would double up. Skip and tell the model so it stops trying.
+                    out = "(skipped: say is automatic from your reply text)"
+                    log.warning("rcon | skipped %r -- %s", cmd, out)
+                else:
+                    try:
+                        out = run_rcon(cmd)
+                        log.info("rcon | %s  →  %s", cmd, out or "(sent)")
+                        # echo the raw command to chat so players can see the bot
+                        # actually did something, not just heard it. Plain text for
+                        # now -- SourceMod would let this be a distinct colour.
+                        try:
+                            _say(f"[rcon] {cmd}")
+                        except Exception as e:
+                            log.error("chat echo of rcon command failed: %s", e)
+                    except Exception as e:
+                        out = f"rcon error: {e}"
+                        log.error("rcon | %s  →  %s", cmd, out)
                 results.append(
                     {"type": "tool_result", "tool_use_id": tu.id, "content": out or "(sent)"}
                 )
