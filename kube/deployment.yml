@@ -15,6 +15,8 @@ spec:
     metadata:
       labels:
         app: tf2
+      annotations:
+        cluster-autoscaler.kubernetes.io/safe-to-evict: "true"
     spec:
       nodeSelector:
         kubernetes.io/arch: amd64  # avoid pi
