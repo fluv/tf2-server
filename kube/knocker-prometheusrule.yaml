@@ -1,0 +1,50 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: tf2-knocker
+  namespace: tf2
+  labels:
+    release: prometheus
+spec:
+  groups:
+    - name: tf2-knocker
+      rules:
+        - alert: Tf2UnreachableWhileSleeping
+          expr: >-
+            kube_deployment_status_replicas_available{namespace="tf2", deployment="tf2-knocker"} == 0
+            and on()
+            kube_deployment_spec_replicas{namespace="tf2", deployment="tf2"} == 0
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: tf2 is scaled to zero and the knocker is down
+            description: >-
+              Nothing is listening on the TF2 game port. The server is
+              scaled to zero and the tf2-knocker deployment has no
+              available replicas, so player connections cannot wake it.
+
+        - alert: Tf2KnockerCrashLooping
+          expr: increase(kube_pod_container_status_restarts_total{namespace="tf2", container="knocker"}[1h]) > 3
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: tf2-knocker is crash-looping
+            description: The tf2-knocker pod has restarted more than 3 times in the last hour.
+
+        - alert: Tf2WakeStuck
+          expr: >-
+            kube_deployment_spec_replicas{namespace="tf2", deployment="tf2"} == 1
+            and
+            kube_deployment_status_replicas_available{namespace="tf2", deployment="tf2"} == 0
+          for: 45m
+          labels:
+            severity: warning
+          annotations:
+            summary: tf2 was woken but never became available
+            description: >-
+              The tf2 deployment has been scaled to 1 for 45 minutes
+              without a ready replica. A cold start re-downloads ~14GB
+              of game content and legitimately takes minutes, but this
+              long suggests the download or boot is stuck.

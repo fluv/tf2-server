@@ -1,0 +1,82 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tf2-knocker
+  namespace: tf2
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: tf2-knocker
+  template:
+    metadata:
+      labels:
+        # app: tf2 puts this pod behind the same Services as the real
+        # server; readiness (below) decides which of the two actually
+        # receives traffic. The knocker pod has its own controller
+        # ownerRef, so the tf2 Deployment never adopts or counts it.
+        app: tf2
+        app.kubernetes.io/name: tf2-knocker
+    spec:
+      serviceAccountName: tf2-knocker
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: knocker
+          # Built from knocker/ in fluv/tf2-server; the image entrypoint
+          # runs knocker.py. Digest-pinned like every other image here;
+          # Renovate manages the digest.
+          image: ghcr.io/fluv/tf2-knocker:latest@sha256:8d27a8c99df153ad7680e9d9690c3cdcbacb4432c57dec935ecfb88d2e5b83c6
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: IDLE_MINUTES
+              value: "30"
+          ports:
+            - containerPort: 27015
+              protocol: UDP
+          # Ready only while the tf2 deployment has 0 ready replicas --
+          # the script manages /tmp/ready. This is what flips Service
+          # endpoints between knocker and real server.
+          readinessProbe:
+            exec:
+              command: ["test", "-f", "/tmp/ready"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 1
+          # Self-A2S over localhost exercises the same udp_loop players
+          # hit: a wedged socket loop fails this even while the process
+          # is alive. The knocker answers A2S regardless of whether the
+          # real server is awake, so this probe is valid in both states.
+          livenessProbe:
+            exec:
+              command:
+                - python3
+                - -c
+                - |
+                  import socket
+                  s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                  s.settimeout(3)
+                  s.sendto(b"\xff\xff\xff\xffTSource Engine Query\x00", ("127.0.0.1", 27015))
+                  s.recvfrom(1024)
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
