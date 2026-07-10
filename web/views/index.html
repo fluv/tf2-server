@@ -3,6 +3,22 @@
 
 
 {% block content %}
+  {% if sleeping %}
+  {% from "govuk/components/notification-banner/macro.njk" import govukNotificationBanner %}
+  {% set sleepingHtml %}
+    <p class="govuk-notification-banner__heading">The server is asleep to save resources.</p>
+    <p class="govuk-body">
+      Joining from Team Fortress 2 wakes it up automatically. The first join
+      takes a few minutes while the server starts &mdash; if the connection
+      times out, keep retrying and you&rsquo;ll get in.
+    </p>
+  {% endset %}
+  {{ govukNotificationBanner({
+    titleText: "Server asleep",
+    html: sleepingHtml
+  }) }}
+  {% endif %}
+
   <h1 class="govuk-heading-xl">Play Team Fortress 2</h1>
 
   <p class="govuk-body-l">
