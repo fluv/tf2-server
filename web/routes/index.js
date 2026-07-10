@@ -50,7 +50,7 @@ const getServerIp = async (host) => {
   if (Date.now() < cache.expiry) return cache.ip
   const addrs = await dns.resolve4(host)
   const ip = addrs.pop()
-  cache = { ip, expiry: Date.now() * 60 * 1000 }
+  cache = { ip, expiry: Date.now() + 60 * 1000 }
   return ip
 }
 
