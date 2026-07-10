@@ -13,6 +13,11 @@ behind the same Kubernetes Service selector as the real server:
   scaling 1→0 after `IDLE_MINUTES` (default 30) of consecutive
   zero-player readings.
 
+The fake server name contains the marker `(sleeping` — `web/` keys off
+that exact substring to show its "server asleep" banner, so changing
+the name in `fake_info_response()` means updating
+`web/routes/index.js` in the same change.
+
 Stdlib only; talks to the Kubernetes API directly with the pod's
 service account token. Deployment manifests live in `fluv/kube` under
 `tf2-knocker/`.
