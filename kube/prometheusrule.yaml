@@ -10,13 +10,19 @@ spec:
     - name: tf2-server
       rules:
         - alert: TF2ServerDown
-          expr: kube_deployment_status_replicas_available{namespace="tf2",deployment="tf2"} == 0
+          expr: >-
+            kube_deployment_status_replicas_available{namespace="tf2",deployment="tf2"} == 0
+            and
+            kube_deployment_spec_replicas{namespace="tf2",deployment="tf2"} > 0
           for: 2m
           labels:
             severity: warning
           annotations:
             summary: "TF2 game server is unavailable"
-            description: "The tf2 deployment has had zero available replicas for 2 minutes."
+            description: >-
+              The tf2 deployment is scaled above zero but has no available
+              replicas. Does not fire when the server is deliberately idle
+              (0 replicas, knocker handles wake-on-demand).
         - alert: TF2WebDown
           expr: kube_deployment_status_replicas_available{namespace="tf2",deployment="tf2-web"} == 0
           for: 5m
