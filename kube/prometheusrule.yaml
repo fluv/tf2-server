@@ -17,6 +17,7 @@ spec:
           for: 2m
           labels:
             severity: warning
+            component: tf2
           annotations:
             summary: "TF2 game server is unavailable"
             description: >-
@@ -28,6 +29,7 @@ spec:
           for: 5m
           labels:
             severity: warning
+            component: tf2
           annotations:
             summary: "TF2 web interface is unavailable"
             description: "The tf2-web deployment has had zero available replicas for 5 minutes."
