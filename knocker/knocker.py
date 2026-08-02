@@ -89,9 +89,9 @@ def cstring(s):
 def fake_info_response(booting=False):
     # https://developer.valvesoftware.com/wiki/Server_queries#A2S_INFO
     if booting:
-        name = cstring("tf2 (booting - server is starting up, please wait)")
+        name = cstring("tf2 (booting - ready in about 2 minutes)")
     else:
-        name = cstring("tf2 (sleeping - connect to wake, takes a few minutes)")
+        name = cstring("tf2 (sleeping - connect to wake)")
     return (b"\xff\xff\xff\xffI\x11"
             + name
             + cstring("cp_dustbowl")

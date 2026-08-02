@@ -6,10 +6,10 @@
   {% if booting %}
   {% from "govuk/components/notification-banner/macro.njk" import govukNotificationBanner %}
   {% set bootingHtml %}
-    <p class="govuk-notification-banner__heading">The server is starting up.</p>
+    <p class="govuk-notification-banner__heading">The server is starting.</p>
     <p class="govuk-body">
-      Someone has already connected and the server is booting. It should be
-      ready in a minute or two &mdash; keep retrying and you&rsquo;ll get in.
+      It will be ready in about 2 minutes. If your connection times out,
+      try again.
     </p>
   {% endset %}
   {{ govukNotificationBanner({
@@ -21,9 +21,8 @@
   {% set sleepingHtml %}
     <p class="govuk-notification-banner__heading">The server is asleep to save resources.</p>
     <p class="govuk-body">
-      Joining from Team Fortress 2 wakes it up automatically. The first join
-      takes a few minutes while the server starts &mdash; if the connection
-      times out, keep retrying and you&rsquo;ll get in.
+      Connect from Team Fortress 2 to wake it. Starting the server
+      takes a few minutes. If your connection times out, try again.
     </p>
   {% endset %}
   {{ govukNotificationBanner({
