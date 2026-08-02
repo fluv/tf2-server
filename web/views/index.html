@@ -3,7 +3,20 @@
 
 
 {% block content %}
-  {% if sleeping %}
+  {% if booting %}
+  {% from "govuk/components/notification-banner/macro.njk" import govukNotificationBanner %}
+  {% set bootingHtml %}
+    <p class="govuk-notification-banner__heading">The server is starting up.</p>
+    <p class="govuk-body">
+      Someone has already connected and the server is booting. It should be
+      ready in a minute or two &mdash; keep retrying and you&rsquo;ll get in.
+    </p>
+  {% endset %}
+  {{ govukNotificationBanner({
+    titleText: "Server booting",
+    html: bootingHtml
+  }) }}
+  {% elif sleeping %}
   {% from "govuk/components/notification-banner/macro.njk" import govukNotificationBanner %}
   {% set sleepingHtml %}
     <p class="govuk-notification-banner__heading">The server is asleep to save resources.</p>

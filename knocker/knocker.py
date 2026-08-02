@@ -35,7 +35,8 @@ POD_NAME = os.environ.get("POD_NAME", "")
 
 A2S_INFO_REQUEST = b"\xff\xff\xff\xffTSource Engine Query\x00"
 
-tf2_ready = False  # updated by readiness_loop, read by udp_loop
+tf2_ready = False   # updated by readiness_loop, read by udp_loop
+tf2_booting = False  # spec.replicas > 0 but readyReplicas == 0
 
 
 def api(method, path, body=None):
@@ -85,10 +86,14 @@ def cstring(s):
     return s.encode("utf-8", "replace") + b"\x00"
 
 
-def fake_info_response():
+def fake_info_response(booting=False):
     # https://developer.valvesoftware.com/wiki/Server_queries#A2S_INFO
+    if booting:
+        name = cstring("tf2 (booting - server is starting up, please wait)")
+    else:
+        name = cstring("tf2 (sleeping - connect to wake, takes a few minutes)")
     return (b"\xff\xff\xff\xffI\x11"
-            + cstring("tf2 (sleeping - connect to wake, takes a few minutes)")
+            + name
             + cstring("cp_dustbowl")
             + cstring("tf")
             + cstring("Team Fortress")
@@ -130,11 +135,15 @@ def a2s_player_count(ip):
 def readiness_loop():
     """Knocker is 'ready' (receives Service traffic) only while tf2 has
     zero ready replicas."""
-    global tf2_ready
+    global tf2_ready, tf2_booting
     while True:
         try:
-            status = get_deployment().get("status", {})
-            tf2_ready = status.get("readyReplicas", 0) > 0
+            dep = get_deployment()
+            status = dep.get("status", {})
+            spec_replicas = dep.get("spec", {}).get("replicas", 0)
+            ready_replicas = status.get("readyReplicas", 0)
+            tf2_ready = ready_replicas > 0
+            tf2_booting = spec_replicas > 0 and ready_replicas == 0
             if tf2_ready and os.path.exists(READY_FILE):
                 os.unlink(READY_FILE)
             elif not tf2_ready and not os.path.exists(READY_FILE):
@@ -180,7 +189,7 @@ def udp_loop():
             data, addr = sock.recvfrom(4096)
             kind = data[4:5] if data[:4] == b"\xff\xff\xff\xff" else b""
             if kind == b"T":  # A2S_INFO: answer locally, do not wake
-                sock.sendto(fake_info_response(), addr)
+                sock.sendto(fake_info_response(booting=tf2_booting), addr)
             elif kind == b"U":  # A2S_PLAYER: empty player list
                 sock.sendto(b"\xff\xff\xff\xffD\x00", addr)
             elif kind in (b"q", b"k"):  # getchallenge / connect: wake
