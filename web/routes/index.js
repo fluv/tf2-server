@@ -59,12 +59,14 @@ app.get('/', async (req, res) => {
     const port = process.env.TF2_PORT || 30015
     const info = await getServerInfo(hostname, port)
     const sleeping = !!(info.name && info.name.includes('(sleeping'))
+    const booting = !!(info.name && info.name.includes('(booting'))
     res.render('index.html', {
         hostname,
         ip: await getServerIp(hostname),
         port,
         sleeping,
-        currentMap: sleeping ? null : info.map,
+        booting,
+        currentMap: (sleeping || booting) ? null : info.map,
         maps: await getMapCycle()
     })
 })
