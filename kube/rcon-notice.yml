@@ -17,7 +17,7 @@ spec:
             - "/bin/sh"
             - "-c"
             - >-
-              ./rcon -a tf2-rcon:27015 -p "$RCON_PASS" "say Server's applying an update, one moment..."
+              /rcon -a tf2-rcon:27015 -p "$RCON_PASS" "say Server's applying an update, one moment..."
               || echo "rcon notice failed (server idle or unreachable) — continuing without notice"
           securityContext:
             seccompProfile:
