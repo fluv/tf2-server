@@ -6,10 +6,6 @@ metadata:
   annotations:
     argocd.argoproj.io/hook: PreSync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
-    # The game server is scaled to zero when idle (knocker wake-on-demand), so
-    # rcon may be unreachable at sync time. This notice is a courtesy — failing
-    # it must not block the sync, or unrelated manifest changes never land.
-    argocd.argoproj.io/hook-fail-policy: Ignore
 spec:
   template:
     spec:
@@ -18,12 +14,11 @@ spec:
         - name: rcon
           image: outdead/rcon
           command:
-            - "./rcon"
-            - "-a"
-            - "tf2-rcon:27015"
-            - "-p"
-            - "$(RCON_PASS)"
-            - "say Server's applying an update, one moment..."
+            - "/bin/sh"
+            - "-c"
+            - >-
+              ./rcon -a tf2-rcon:27015 -p "$RCON_PASS" "say Server's applying an update, one moment..."
+              || echo "rcon notice failed (server idle or unreachable) — continuing without notice"
           securityContext:
             seccompProfile:
               type: RuntimeDefault
