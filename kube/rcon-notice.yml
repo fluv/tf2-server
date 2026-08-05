@@ -12,7 +12,10 @@ spec:
       restartPolicy: Never
       containers:
         - name: rcon
-          image: outdead/rcon
+          # Digest-pinned: the wrapper depends on /bin/sh and /rcon being
+          # present in this image; a floating tag could be rebuilt as
+          # scratch/distroless and break the hook, re-blocking syncs.
+          image: outdead/rcon@sha256:c2e13830355729a986e28bb81ba18aa695542c90f5c87c62204462307200aee2
           command:
             - "/bin/sh"
             - "-c"
