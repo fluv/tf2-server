@@ -21,8 +21,7 @@ spec:
             summary: "TF2 game server is unavailable"
             description: >-
               The tf2 deployment is scaled above zero but has no available
-              replicas. Does not fire when the server is deliberately idle
-              (0 replicas, knocker handles wake-on-demand).
+              replicas.
         - alert: TF2WebDown
           expr: |
             kube_deployment_status_replicas_available{namespace="tf2",deployment="tf2-web"} == 0
